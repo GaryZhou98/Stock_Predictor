@@ -49,9 +49,9 @@ def get_data(symbol, start_date):
     atr = get_atr(symbol, start_date)
     price = get_price_and_pe(symbol, start_date)
     # news_sentiment = get_news_sentiment(symbol, start_date)
-    all_data = covid_data.merge(recommendation_trends, how="inner", on="date")
+    all_data = price.merge(covid_data, how="inner", on="date")
+    all_data = all_data.merge(recommendation_trends, how="outer", on="date")
     all_data = all_data.merge(atr, how="outer", on="date")
-    all_data = all_data.merge(price, how="inner", on="date")
     all_data = all_data.fillna(method="backfill")
     all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False)
     print(f"wrote {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
@@ -125,7 +125,6 @@ def get_price_and_pe(symbol, start_date):
   res = pd.DataFrame.from_dict(res, orient="index")
   res = res.reset_index().rename(columns={"index": "date", 0 : "closePrice", 1 : "simpleAvg", 2 : "pe"})
   res["date"] = pd.to_datetime(res["date"], format=TIME_FORMAT)
-  # print(res)
   return res
 
 
