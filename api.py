@@ -32,10 +32,11 @@ def get_args():
         "--start_date",
         help="start date TIME_FORMAT",
         type=lambda s: datetime.datetime.strptime(s, TIME_FORMAT),
-        default="2020-01-20",
+        default=(datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT),
     )
     parser.add_argument("-s", "--symbol", help="symbol to pull data on", default=False)
     parser.add_argument("-f", "--file", help="pull symbols from file", default=False)
+    parser.add_argument("-n", "--new_row", help="add new data to existing csv", default=True)
     return parser.parse_args()
 
 
@@ -46,6 +47,9 @@ def get_row_from_csv(csv_fname):
 
 def get_new_row(symbol, file):
     prev_price_data = pd.read_csv(file).tail(4)
+    last_date = prev_price_data.tail(1)['date'].values[0]
+    if last_date >= (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT):
+      return
     prev_price_data = prev_price_data["closePrice"].to_numpy().astype('float64')
     price = requests.get(PRICE_PATH.format(symbol, credentials["av_api_key"])).json()
     price = float(price['Time Series (Daily)'][(datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)]['4. close'])
@@ -164,14 +168,18 @@ def get_news_sentimenet(symbol, start_date):
 
 if __name__ == "__main__":
     args = get_args()
-    if args.symbol and args.file:
+    if args.new_row:
+        if not args.symbol or not args.file:
+          raise ValueError("Missing start_date, symbol and filepath for existing csv to add new row")
         get_new_row(args.symbol, args.file)
-        #get_data(args.symbol, args.start_date)
-    elif args.file:
-        symbols = iter(get_row_from_csv(args.file))
-        for row in symbols:
-            for symbol in row:
-                get_data(symbol, args.start_date)
+        exit(1)
+    elif args.symbol:
+        get_data(args.symbol, args.start_date)
+        if args.file:
+            symbols = iter(get_row_from_csv(args.file))
+            for row in symbols:
+                for symbol in row:
+                    get_data(symbol, args.start_date)
 
 
 
