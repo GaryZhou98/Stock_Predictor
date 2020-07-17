@@ -1,11 +1,12 @@
 from iexfinance.stocks import get_historical_data
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv 
 import argparse
 import csv
 import datetime
 import json
 import pandas as pd
+import numpy as np
 import requests
 
 COVID_CSV_PATH = "https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv"
@@ -14,6 +15,7 @@ RECOMMENDATION_TRENDS_PATH = (
 )
 NEWS_SENTIMENT_PATH = "https://finnhub.io/api/v1/news-sentiment?symbol={}&token={}"
 ATR_PATH = "https://www.alphavantage.co/query?function=ATR&symbol={}&interval=daily&time_period={}&apikey={}"
+PRICE_PATH = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&apikey={}"
 TIME_FORMAT = "%Y-%m-%d"
 SAVED_CSV_PATH = "{}_daily.csv"
 recommendation_cols = ["date", "buy", "hold", "sell", "strongBuy", "strongSell"]
@@ -41,6 +43,34 @@ def get_row_from_csv(csv_fname):
     with open(csv_fname, "r", encoding="latin-1") as csv_in:
         for row in csv.reader(csv_in):
             yield row
+
+def get_new_row(symbol, file):
+    prev_price_data = pd.read_csv(file).tail(4)
+    prev_price_data = prev_price_data["closePrice"].to_numpy().astype('float64')
+    price = requests.get(PRICE_PATH.format(symbol, credentials["av_api_key"])).json()
+    price = float(price['Time Series (Daily)'][(datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)]['4. close'])
+    pe = price / eps
+    simple_avg = 0
+    total = 0
+    for num in prev_price_data:
+      total += float(num)
+    simple_avg = (total + price) / 5
+    price_data = {'date': [datetime.date.today() - timedelta(1)], 'closePrice': [price], 'simpleAvg': [simple_avg], 'pe': [pe]}
+    price_data = pd.DataFrame.from_dict(price_data)
+    covid_data = get_covid_data((datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT))
+    recommendation_trends = requests.get(
+        RECOMMENDATION_TRENDS_PATH.format(symbol, credentials["finnhub_api_key"])
+    ).json()[0]
+    recommendation_trends = pd.DataFrame(recommendation_trends, index=[0]).drop(['period', 'symbol'], axis=1)
+    atr = get_atr(symbol, (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)).reset_index()
+    all_data = price_data.merge(covid_data, how="inner", left_index=True, right_index=True)
+    all_data = all_data.merge(recommendation_trends, how="outer", left_index=True, right_index=True)
+    all_data = all_data.merge(atr, how="outer", left_index=True, right_index=True)
+    all_data = all_data.fillna(method="backfill")
+    all_data = all_data.drop(['date_y', 'index', 'date'], axis=1).rename(columns={'date_x' : 'date'})
+    all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False, mode='a', header=False)
+    print(f"added new {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
+
 
 def get_data(symbol, start_date):
     print(f"pulling historical data for {symbol}...")
@@ -134,9 +164,10 @@ def get_news_sentimenet(symbol, start_date):
 
 if __name__ == "__main__":
     args = get_args()
-    if args.symbol:
-        get_data(args.symbol, args.start_date)
-    if args.file:
+    if args.symbol and args.file:
+        get_new_row(args.symbol, args.file)
+        #get_data(args.symbol, args.start_date)
+    elif args.file:
         symbols = iter(get_row_from_csv(args.file))
         for row in symbols:
             for symbol in row:
