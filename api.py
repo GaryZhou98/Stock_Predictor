@@ -49,6 +49,7 @@ def get_new_row(symbol, file):
     prev_price_data = pd.read_csv(file).tail(4)
     last_date = prev_price_data.tail(1)['date'].values[0]
     if last_date >= (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT):
+      print(f"Newest data for {symbol} has already been appended, aborting operation.")
       return
     prev_price_data = prev_price_data["closePrice"].to_numpy().astype('float64')
     price = requests.get(PRICE_PATH.format(symbol, credentials["av_api_key"])).json()
