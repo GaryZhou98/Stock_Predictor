@@ -1,6 +1,6 @@
 from iexfinance.stocks import get_historical_data
 from datetime import datetime, timedelta
-import csv 
+import csv
 import argparse
 import csv
 import datetime
@@ -15,9 +15,11 @@ RECOMMENDATION_TRENDS_PATH = (
 )
 NEWS_SENTIMENT_PATH = "https://finnhub.io/api/v1/news-sentiment?symbol={}&token={}"
 ATR_PATH = "https://www.alphavantage.co/query?function=ATR&symbol={}&interval=daily&time_period={}&apikey={}"
-PRICE_PATH = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&apikey={}"
-UNEMPLOYMENT_SERIES_ID = 'LNS14000000' #seasonally adj. from BLS website
-BLS_API_URL = 'https://api.bls.gov/publicAPI/v2/timeseries/data/'
+PRICE_PATH = (
+    "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&apikey={}"
+)
+UNEMPLOYMENT_SERIES_ID = "LNS14000000"  # seasonally adj. from BLS website
+BLS_API_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
 
 TIME_FORMAT = "%Y-%m-%d"
@@ -27,7 +29,8 @@ credentials = json.load(open("credentials.json", "r"))
 end = datetime.datetime.now()
 
 # pe = fb.get_earnings(period='year', token="pk_69c9cac10e344939be9ee5694af27d49")[0]['actualEPS']
-eps = 7.30 #TTM
+eps = 7.30  # TTM
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -40,7 +43,9 @@ def get_args():
     )
     parser.add_argument("-s", "--symbol", help="symbol to pull data on", default=False)
     parser.add_argument("-f", "--file", help="pull symbols from file", default=False)
-    parser.add_argument("-n", "--new_row", help="add new data to existing csv", action='store_false')
+    parser.add_argument(
+        "-n", "--new_row", help="add new data to existing csv", action="store_false"
+    )
     return parser.parse_args()
 
 
@@ -49,34 +54,56 @@ def get_row_from_csv(csv_fname):
         for row in csv.reader(csv_in):
             yield row
 
+
 def get_new_row(symbol, file):
     prev_price_data = pd.read_csv(file).tail(4)
-    last_date = prev_price_data.tail(1)['date'].values[0]
+    last_date = prev_price_data.tail(1)["date"].values[0]
     if last_date >= (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT):
-      return
-    prev_price_data = prev_price_data["closePrice"].to_numpy().astype('float64')
+        return
+    prev_price_data = prev_price_data["closePrice"].to_numpy().astype("float64")
     price = requests.get(PRICE_PATH.format(symbol, credentials["av_api_key"])).json()
-    price = float(price['Time Series (Daily)'][(datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)]['4. close'])
+    price = float(
+        price["Time Series (Daily)"][
+            (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)
+        ]["4. close"]
+    )
     pe = price / eps
     simple_avg = 0
     total = 0
     for num in prev_price_data:
-      total += float(num)
+        total += float(num)
     simple_avg = (total + price) / 5
-    price_data = {'date': [datetime.date.today() - timedelta(1)], 'closePrice': [price], 'simpleAvg': [simple_avg], 'pe': [pe]}
+    price_data = {
+        "date": [datetime.date.today() - timedelta(1)],
+        "closePrice": [price],
+        "simpleAvg": [simple_avg],
+        "pe": [pe],
+    }
     price_data = pd.DataFrame.from_dict(price_data)
-    covid_data = get_covid_data((datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT))
+    covid_data = get_covid_data(
+        (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)
+    )
     recommendation_trends = requests.get(
         RECOMMENDATION_TRENDS_PATH.format(symbol, credentials["finnhub_api_key"])
     ).json()[0]
-    recommendation_trends = pd.DataFrame(recommendation_trends, index=[0]).drop(['period', 'symbol'], axis=1)
-    atr = get_atr(symbol, (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)).reset_index()
-    all_data = price_data.merge(covid_data, how="inner", left_index=True, right_index=True)
-    all_data = all_data.merge(recommendation_trends, how="outer", left_index=True, right_index=True)
+    recommendation_trends = pd.DataFrame(recommendation_trends, index=[0]).drop(
+        ["period", "symbol"], axis=1
+    )
+    atr = get_atr(
+        symbol, (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)
+    ).reset_index()
+    all_data = price_data.merge(
+        covid_data, how="inner", left_index=True, right_index=True
+    )
+    all_data = all_data.merge(
+        recommendation_trends, how="outer", left_index=True, right_index=True
+    )
     all_data = all_data.merge(atr, how="outer", left_index=True, right_index=True)
     all_data = all_data.fillna(method="backfill")
-    all_data = all_data.drop(['date_y', 'index', 'date'], axis=1).rename(columns={'date_x' : 'date'})
-    all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False, mode='a', header=False)
+    all_data = all_data.drop(["date_y", "index", "date"], axis=1).rename(
+        columns={"date_x": "date"}
+    )
+    all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False, mode="a", header=False)
     print(f"added new {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
 
 
@@ -107,19 +134,24 @@ def get_covid_data(start_date):
 
 
 def get_unemployment(start_date):
-    headers = {'Content-type': 'application/json'}
-    data = json.dumps({"seriesid": [UNEMPLOYMENT_SERIES_ID],"startyear":start_date.year, "endyear":datetime.date.today().year})
+    headers = {"Content-type": "application/json"}
+    data = json.dumps(
+        {
+            "seriesid": [UNEMPLOYMENT_SERIES_ID],
+            "startyear": start_date.year,
+            "endyear": datetime.date.today().year,
+        }
+    )
     res = json.loads(requests.post(BLS_API_URL, data=data, headers=headers).text)
-    df = pd.DataFrame.from_dict(res['Results']['series'][0]['data'])
-    df['period'] = pd.to_datetime(df['periodName'] + ' ' + df['year'])
-    df.drop(columns=['year','periodName','latest', 'footnotes'], inplace=True)
+    df = pd.DataFrame.from_dict(res["Results"]["series"][0]["data"])
+    df["period"] = pd.to_datetime(df["periodName"] + " " + df["year"])
+    df.drop(columns=["year", "periodName", "latest", "footnotes"], inplace=True)
     index = pd.date_range(df["period"].min(), datetime.date.today())
     df = df.set_index("period").reindex(index, method="backfill")
     df = df.reset_index()
     df["date"] = df["index"]
-    df.rename(columns={"value":"unemploymentRate"}, inplace=True)
-    return df[df["date"] >= start_date][['date','unemploymentRate']]
-
+    df.rename(columns={"value": "unemploymentRate"}, inplace=True)
+    return df[df["date"] >= start_date][["date", "unemploymentRate"]]
 
 
 def get_recommendation_trends(symbol, start_date):
@@ -153,37 +185,59 @@ def get_atr(symbol, start_date):
     atr["date"] = pd.to_datetime(atr["date"], format=TIME_FORMAT)
     return atr[atr["date"] >= start_date]
 
+
 def get_price_and_pe(symbol, start_date):
-  data = []
-  counter = 1
-  hist = get_historical_data(symbol, start_date, end, close_only=True, token=credentials["iex_token"])
+    data = []
+    counter = 1
+    hist = get_historical_data(
+        symbol, start_date, end, close_only=True, token=credentials["iex_token"]
+    )
 
-  for day in hist:
-    price = hist[day]['close']
-    temp = [day, price]
-    if counter == 1:
-      temp.append(price)
-    elif counter == 2:
-      temp.append((price + data[counter - 2][1])/2)
-    elif counter == 3:
-      temp.append((price + data[counter - 2][1] + data[counter - 3][1])/3)
-    elif counter == 4:
-      temp.append((price + data[counter - 2][1] + data[counter - 3][1] + data[counter - 4][1])/4)
-    else:
-      temp.append((price + data[counter - 2][1] + data[counter - 3][1] + data[counter - 4][1] + data[counter - 5][1])/5)
-    
-    counter += 1
-    temp.append(price/eps)
-    data.append(temp)
-  
-  res = {}
-  for row in data:
-    res[row[0]] = row[1:]
+    for day in hist:
+        price = hist[day]["close"]
+        temp = [day, price]
+        if counter == 1:
+            temp.append(price)
+        elif counter == 2:
+            temp.append((price + data[counter - 2][1]) / 2)
+        elif counter == 3:
+            temp.append((price + data[counter - 2][1] + data[counter - 3][1]) / 3)
+        elif counter == 4:
+            temp.append(
+                (
+                    price
+                    + data[counter - 2][1]
+                    + data[counter - 3][1]
+                    + data[counter - 4][1]
+                )
+                / 4
+            )
+        else:
+            temp.append(
+                (
+                    price
+                    + data[counter - 2][1]
+                    + data[counter - 3][1]
+                    + data[counter - 4][1]
+                    + data[counter - 5][1]
+                )
+                / 5
+            )
 
-  res = pd.DataFrame.from_dict(res, orient="index")
-  res = res.reset_index().rename(columns={"index": "date", 0 : "closePrice", 1 : "simpleAvg", 2 : "pe"})
-  res["date"] = pd.to_datetime(res["date"], format=TIME_FORMAT)
-  return res
+        counter += 1
+        temp.append(price / eps)
+        data.append(temp)
+
+    res = {}
+    for row in data:
+        res[row[0]] = row[1:]
+
+    res = pd.DataFrame.from_dict(res, orient="index")
+    res = res.reset_index().rename(
+        columns={"index": "date", 0: "closePrice", 1: "simpleAvg", 2: "pe"}
+    )
+    res["date"] = pd.to_datetime(res["date"], format=TIME_FORMAT)
+    return res
 
 
 def get_news_sentimenet(symbol, start_date):
@@ -194,7 +248,9 @@ if __name__ == "__main__":
     args = get_args()
     if args.new_row:
         if not args.symbol or not args.file:
-          raise ValueError("Missing start_date, symbol and filepath for existing csv to add new row")
+            raise ValueError(
+                "Missing start_date, symbol and filepath for existing csv to add new row"
+            )
         get_new_row(args.symbol, args.file)
         exit(1)
     elif args.symbol:
@@ -204,9 +260,6 @@ if __name__ == "__main__":
             for row in symbols:
                 for symbol in row:
                     get_data(symbol, args.start_date)
-
-
-
 
 
 # print(fb.get_quote())
