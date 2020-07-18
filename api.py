@@ -16,6 +16,10 @@ RECOMMENDATION_TRENDS_PATH = (
 NEWS_SENTIMENT_PATH = "https://finnhub.io/api/v1/news-sentiment?symbol={}&token={}"
 ATR_PATH = "https://www.alphavantage.co/query?function=ATR&symbol={}&interval=daily&time_period={}&apikey={}"
 PRICE_PATH = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&apikey={}"
+UNEMPLOYMENT_SERIES_ID = 'LNS14000000' #seasonally adj. from BLS website
+BLS_API_URL = 'https://api.bls.gov/publicAPI/v2/timeseries/data/'
+
+
 TIME_FORMAT = "%Y-%m-%d"
 SAVED_CSV_PATH = "{}_daily.csv"
 recommendation_cols = ["date", "buy", "hold", "sell", "strongBuy", "strongSell"]
@@ -36,7 +40,7 @@ def get_args():
     )
     parser.add_argument("-s", "--symbol", help="symbol to pull data on", default=False)
     parser.add_argument("-f", "--file", help="pull symbols from file", default=False)
-    parser.add_argument("-n", "--new_row", help="add new data to existing csv", default=True)
+    parser.add_argument("-n", "--new_row", help="add new data to existing csv", action='store_false')
     return parser.parse_args()
 
 
@@ -78,15 +82,18 @@ def get_new_row(symbol, file):
 
 def get_data(symbol, start_date):
     print(f"pulling historical data for {symbol}...")
+    unemployment = get_unemployment(start_date)
     covid_data = get_covid_data(start_date)
     recommendation_trends = get_recommendation_trends(symbol, start_date)
     atr = get_atr(symbol, start_date)
     price = get_price_and_pe(symbol, start_date)
     # news_sentiment = get_news_sentiment(symbol, start_date)
     all_data = price.merge(covid_data, how="inner", on="date")
+    all_data = all_data.merge(unemployment, how="inner", on="date")
     all_data = all_data.merge(recommendation_trends, how="outer", on="date")
     all_data = all_data.merge(atr, how="outer", on="date")
     all_data = all_data.fillna(method="backfill")
+    all_data.dropna(inplace=True)
     all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False)
     print(f"wrote {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
 
@@ -97,6 +104,23 @@ def get_covid_data(start_date):
     index = pd.date_range(start_date, data["date"].max())
     data = data.set_index("date").reindex(index, fill_value=0)
     return data.reset_index().rename(columns={"index": "date"})
+
+
+def get_unemployment(start_date):
+    headers = {'Content-type': 'application/json'}
+    data = json.dumps({"seriesid": [UNEMPLOYMENT_SERIES_ID],"startyear":start_date.year, "endyear":datetime.date.today().year})
+    res = json.loads(requests.post(BLS_API_URL, data=data, headers=headers).text)
+    df = pd.DataFrame.from_dict(res['Results']['series'][0]['data'])
+    df['period'] = pd.to_datetime(df['periodName'] + ' ' + df['year'])
+    df.drop(columns=['year','periodName','latest', 'footnotes'], inplace=True)
+    index = pd.date_range(df["period"].min(), datetime.date.today())
+    df = df.set_index("period").reindex(index, method="backfill")
+    df = df.reset_index()
+    df["date"] = df["index"]
+    df.rename(columns={"value":"unemploymentRate"}, inplace=True)
+    return df[df["date"] >= start_date][['date','unemploymentRate']]
+
+
 
 def get_recommendation_trends(symbol, start_date):
     all_recs = requests.get(
