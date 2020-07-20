@@ -41,8 +41,10 @@ def get_args():
         type=lambda s: datetime.datetime.strptime(s, TIME_FORMAT),
         default=(datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT),
     )
-    parser.add_argument("-s", "--symbol", help="symbol to pull data on", default=False)
-    parser.add_argument("-f", "--file", help="pull symbols from file", default=False)
+    parser.add_argument(
+        "-s", "--symbol", help="symbol to pull data on", default=False)
+    parser.add_argument(
+        "-f", "--file", help="pull symbols from file", default=False)
     parser.add_argument(
         "-n", "--new_row", help="add new data to existing csv", action="store_false"
     )
@@ -59,10 +61,13 @@ def get_new_row(symbol, file):
     prev_price_data = pd.read_csv(file).tail(4)
     last_date = prev_price_data.tail(1)["date"].values[0]
     if last_date >= (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT):
-      print(f"Newest data for {symbol} has already been appended, aborting operation.")
-      return
-    prev_price_data = prev_price_data["closePrice"].to_numpy().astype('float64')
-    price = requests.get(PRICE_PATH.format(symbol, credentials["av_api_key"])).json()
+        print(
+            f"Newest data for {symbol} has already been appended, aborting operation.")
+        return
+    prev_price_data = prev_price_data["closePrice"].to_numpy().astype(
+        'float64')
+    price = requests.get(PRICE_PATH.format(
+        symbol, credentials["av_api_key"])).json()
     price = float(
         price["Time Series (Daily)"][
             (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)
@@ -85,7 +90,8 @@ def get_new_row(symbol, file):
         (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)
     )
     recommendation_trends = requests.get(
-        RECOMMENDATION_TRENDS_PATH.format(symbol, credentials["finnhub_api_key"])
+        RECOMMENDATION_TRENDS_PATH.format(
+            symbol, credentials["finnhub_api_key"])
     ).json()[0]
     recommendation_trends = pd.DataFrame(recommendation_trends, index=[0]).drop(
         ["period", "symbol"], axis=1
@@ -99,12 +105,14 @@ def get_new_row(symbol, file):
     all_data = all_data.merge(
         recommendation_trends, how="outer", left_index=True, right_index=True
     )
-    all_data = all_data.merge(atr, how="outer", left_index=True, right_index=True)
+    all_data = all_data.merge(
+        atr, how="outer", left_index=True, right_index=True)
     all_data = all_data.fillna(method="backfill")
     all_data = all_data.drop(["date_y", "index", "date"], axis=1).rename(
         columns={"date_x": "date"}
     )
-    all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False, mode="a", header=False)
+    all_data.to_csv(SAVED_CSV_PATH.format(symbol),
+                    index=False, mode="a", header=False)
     print(f"added new {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
 
 
@@ -143,10 +151,12 @@ def get_unemployment(start_date):
             "endyear": datetime.date.today().year,
         }
     )
-    res = json.loads(requests.post(BLS_API_URL, data=data, headers=headers).text)
+    res = json.loads(requests.post(
+        BLS_API_URL, data=data, headers=headers).text)
     df = pd.DataFrame.from_dict(res["Results"]["series"][0]["data"])
     df["period"] = pd.to_datetime(df["periodName"] + " " + df["year"])
-    df.drop(columns=["year", "periodName", "latest", "footnotes"], inplace=True)
+    df.drop(columns=["year", "periodName",
+                     "latest", "footnotes"], inplace=True)
     index = pd.date_range(df["period"].min(), datetime.date.today())
     df = df.set_index("period").reindex(index, method="backfill")
     df = df.reset_index()
@@ -157,7 +167,8 @@ def get_unemployment(start_date):
 
 def get_recommendation_trends(symbol, start_date):
     all_recs = requests.get(
-        RECOMMENDATION_TRENDS_PATH.format(symbol, credentials["finnhub_api_key"])
+        RECOMMENDATION_TRENDS_PATH.format(
+            symbol, credentials["finnhub_api_key"])
     ).json()
     all_recs = pd.DataFrame.from_records(all_recs)
     first_day_of_month = start_date.replace(day=1)
@@ -180,8 +191,10 @@ def get_recommendation_trends(symbol, start_date):
 
 
 def get_atr(symbol, start_date):
-    atr = requests.get(ATR_PATH.format(symbol, 14, credentials["av_api_key"])).json()
-    atr = pd.DataFrame.from_dict(atr["Technical Analysis: ATR"], orient="index")
+    atr = requests.get(ATR_PATH.format(
+        symbol, 14, credentials["av_api_key"])).json()
+    atr = pd.DataFrame.from_dict(
+        atr["Technical Analysis: ATR"], orient="index")
     atr = atr.reset_index().rename(columns={"index": "date", "ATR": "atr"})
     atr["date"] = pd.to_datetime(atr["date"], format=TIME_FORMAT)
     return atr[atr["date"] >= start_date]
@@ -202,7 +215,8 @@ def get_price_and_pe(symbol, start_date):
         elif counter == 2:
             temp.append((price + data[counter - 2][1]) / 2)
         elif counter == 3:
-            temp.append((price + data[counter - 2][1] + data[counter - 3][1]) / 3)
+            temp.append((price + data[counter - 2]
+                         [1] + data[counter - 3][1]) / 3)
         elif counter == 4:
             temp.append(
                 (
