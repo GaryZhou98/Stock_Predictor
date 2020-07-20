@@ -12,7 +12,11 @@ import numpy as np
 import ipdb
 
 # preprocessing constants
+<<<<<<< HEAD
 TIME_STEP = 5
+=======
+TIME_STEP = 3
+>>>>>>> 3a59faa32cb86cb58b8356f31337ebf0194a5c3f
 PREDICTION_STEP = 1
 
 # model constants
