@@ -3,8 +3,9 @@ import pandas as pd
 
 
 from tensorflow.keras import Sequential
+from tensorflow.keras.models import Model
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense, LSTM, Dropout, BatchNormalization
+from tensorflow.keras.layers import Dense, LSTM, Dropout, BatchNormalization, concatenate
 from matplotlib import pyplot
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
@@ -12,18 +13,14 @@ import numpy as np
 import ipdb
 
 # preprocessing constants
-<<<<<<< HEAD
 TIME_STEP = 5
-=======
-TIME_STEP = 3
->>>>>>> 3a59faa32cb86cb58b8356f31337ebf0194a5c3f
 PREDICTION_STEP = 1
 
 # model constants
-LSTM_OUTPUT_SIZE = 256
+LSTM_OUTPUT_SIZE = 128
 DENSE1_OUTPUT_SIZE = 64
 DENSE2_OUTPUT_SIZE = 32
-DENSE3_OUTPUT_SIZE = 1
+DENSE3_OUTPUT_SIZE = PREDICTION_STEP
 
 
 def get_args():
@@ -63,7 +60,6 @@ def series_to_sl(values):
     x = np.array(x)
     y = np.array(y)
 
-    # ipdb.set_trace()
     return x, y, y_scaler
 
 
@@ -78,51 +74,129 @@ def prepare_data(filepath, shuffle=True):
     input_data, label, y_scaler = series_to_sl(data_values)
     x_train, x_test, y_train, y_test = train_test_split(
         input_data, label, test_size=0.25, shuffle=shuffle)
-    # ipdb.set_trace()
     return x_train, x_test, y_train, y_test, y_scaler
 
+def build_covid_model(x_train, y_train, batch_size, epochs,): 
+    covid_model = Sequential()
+    covid_data = x_train[:,:, 3:len(x_train[0][0])-1]
+    covid_model.add(LSTM(LSTM_OUTPUT_SIZE, input_shape=(covid_data.shape[1:]), return_sequences=True))
+    covid_model.add(Dropout(0.2))
+    covid_model.add(BatchNormalization())
 
-def build_model(model, batch_size, epochs, x_train, y_train, x_test, y_test):
-    model.add(
-        LSTM(LSTM_OUTPUT_SIZE, input_shape=(x_train.shape[1:]), return_sequences=True, stateful=False))
-    model.add(Dropout(0.1))
-    model.add(BatchNormalization())
+    covid_model.add(LSTM(LSTM_OUTPUT_SIZE,return_sequences=False))
+    covid_model.add(Dropout(0.2))
+    covid_model.add(BatchNormalization())
 
-    model.add(LSTM(LSTM_OUTPUT_SIZE, return_sequences=False,))
-    model.add(Dropout(0.2))
-    model.add(BatchNormalization())
+    covid_model.add(Dense(DENSE1_OUTPUT_SIZE, activation='relu'))
+    covid_model.add(Dense(DENSE2_OUTPUT_SIZE, activation='sigmoid'))
 
-    model.add(Dense(DENSE1_OUTPUT_SIZE, activation='relu'))
-    model.add(Dense(DENSE2_OUTPUT_SIZE, activation='relu'))
-    model.add(Dense(DENSE3_OUTPUT_SIZE, activation='sigmoid'))
+    covid_model.compile(loss='mse', optimizer='adam')
 
-    model.compile(loss='binary_crossentropy', optimizer='adam')
+    covid_model.fit(covid_data, y_train, batch_size=batch_size, epochs=epochs, shuffle=True)
+    return covid_model
 
-    model.fit(x_train, y_train, batch_size=batch_size, shuffle=False, epochs=epochs)
-    score = model.evaluate(x_test, y_test)
-    print("Validation accuracy percentage", score*100)
+
+def build_price_model(x_train, y_train, batch_size, epochs,): 
+    price_model = Sequential()
+    price_data = x_train[:,:, np.r_[0:3, 5]]
+
+    price_model.add(LSTM(LSTM_OUTPUT_SIZE, input_shape=(price_data.shape[1:]), return_sequences=False))
+    price_model.add(Dropout(0.2))
+    price_model.add(BatchNormalization())
+
+    # price_model.add(LSTM(LSTM_OUTPUT_SIZE,return_sequences=False))
+    # price_model.add(Dropout(0.2))
+    # price_model.add(BatchNormalization())
+
+    price_model.add(Dense(DENSE1_OUTPUT_SIZE, activation='relu'))
+    price_model.add(Dense(DENSE2_OUTPUT_SIZE, activation='sigmoid'))
+
+    price_model.compile(loss='mse', optimizer='adam')
+
+    price_model.fit(price_data, y_train, batch_size=batch_size, epochs=epochs, shuffle=True)
+    return price_model
+
+
+def build_overall_model(x_train, y_train, x_test, y_test, batch_size, epochs,):
+    #covid_model 
+
+    input_models = [build_covid_model(x_train, y_train, batch_size, epochs), build_price_model(x_train, y_train, batch_size, epochs)]
+    for i in range(len(input_models)):
+        model = input_models[i]
+        for layer in model.layers:
+            # make not trainable
+            layer.trainable = False
+            # rename to avoid 'unique layer name' issue
+            layer._name = 'ensemble_' + str(i+1) + '_' + layer.name
+
+    # define multi-headed input
+    ensemble_inputs = [model.input for model in input_models]
+    # ipdb.set_trace()
+	# concatenate merge output from each model
+    ensemble_outputs = [model.output for model in input_models]
+    merge = concatenate(ensemble_outputs)
+
+    hidden = Dense(DENSE2_OUTPUT_SIZE, activation='relu')(merge)
+    output = Dense(DENSE3_OUTPUT_SIZE, activation='sigmoid')(hidden)
+    model = Model(inputs=ensemble_inputs, outputs=output)
+
+    model.compile(loss="mse", optimizer="adam")
+    # overall_overall_model = Sequential()
+    # overall_model.add(
+    #     LSTM(LSTM_OUTPUT_SIZE, input_shape=(x_train.shape[1:]), return_sequences=True, stateful=False))
+    # overall_model.add(Dropout(0.1))
+    # overall_model.add(BatchNormalization())
+
+    # overall_model.add(LSTM(LSTM_OUTPUT_SIZE, return_sequences=False,))
+    # overall_model.add(Dropout(0.2))
+    # overall_model.add(BatchNormalization())
+
+    # overall_model.add(Dense(DENSE1_OUTPUT_SIZE, activation='relu'))
+    # overall_model.add(Dense(DENSE2_OUTPUT_SIZE, activation='relu'))
+    # overall_model.add(Dense(DENSE3_OUTPUT_SIZE, activation='softmax'))
+
+    # overall_model.compile(loss='binary_crossentropy', optimizer='adam')
+
+    # overall_model.fit(x_train, y_train, batch_size=batch_size, shuffle=False, epochs=epochs)
+    # score = overall_model.evaluate(x_test, y_test)
+    # print("Validation accuracy percentage", score*100)
 
     return model
 
+def fit_overall_model(model, x_train, y_train, epochs):
+    covid_input = x_train[:,:, 3:len(x_train[0][0])-1]
+    price_input = x_train[:,:, np.r_[0:3, 5]]
+	# fit model
+    model.fit([covid_input, price_input], y_train, epochs=epochs, verbose=0, shuffle=True)
+
+# make a prediction with a stacked model
+def predict_overall_model(model, x_train):
+	# prepare input data
+    covid_input = x_train[:,:, 3:len(x_train[0][0])-1]
+    price_input = x_train[:,:, np.r_[0:3, 5]]
+	# make prediction
+    return model.predict([covid_input, price_input], verbose=0)
+
 
 def model_prediction(symbol):
-    model = Sequential()
 
     x_train, x_test, y_train, y_test, scaler = prepare_data(
         f"{symbol}_daily.csv", shuffle=False)
-    model = build_model(model, 10, 10, x_train, y_train, x_test, y_test,)
 
-    _, x_test_no_shuffle, _, y_test_no_shuffle, y_scaler = prepare_data(
-        f"{symbol}_daily.csv", shuffle=False)
+    model = build_overall_model(x_train, y_train, x_test, y_test, batch_size=10, epochs=200,)
+    fit_overall_model(model, x_test, y_test, epochs=200)
+    prediction = predict_overall_model(model, x_test)
+    # _, x_test_no_shuffle, _, y_test_no_shuffle, y_scaler = prepare_data(
+    #     f"{symbol}_daily.csv", shuffle=False)
 
-    prediction = model.predict(x_test_no_shuffle, batch_size=10)
-    prediction = np.array(scaler.inverse_transform(prediction))
-    mean = prediction.mean()
-    prediction -= mean
-    prediction *= 100
-    prediction += mean
+    # prediction = model.predict(x_test_no_shuffle, batch_size=10)
+    prediction = np.array(prediction)
+    # mean = prediction.mean()
+    # prediction -= mean
+    # prediction *= 100
+    # prediction += mean
     pyplot.plot(prediction, label='prediction')
-    pyplot.plot(y_scaler.inverse_transform(y_test_no_shuffle), label='actual')
+    pyplot.plot(y_test, label='actual')
     pyplot.legend()
     pyplot.show()
 

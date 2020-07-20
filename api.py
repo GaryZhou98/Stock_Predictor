@@ -15,15 +15,16 @@ RECOMMENDATION_TRENDS_PATH = (
 )
 NEWS_SENTIMENT_PATH = "https://finnhub.io/api/v1/news-sentiment?symbol={}&token={}"
 ATR_PATH = "https://www.alphavantage.co/query?function=ATR&symbol={}&interval=daily&time_period={}&apikey={}"
-PRICE_PATH = (
-    "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&apikey={}"
-)
+DAILY_PRICES_PATH = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&outputsize=full&apikey={}"
+SMA_PATH = "https://www.alphavantage.co/query?function=SMA&symbol={}&interval=daily&time_period=10&series_type=close&apikey={}"
+EMA_PATH = "https://www.alphavantage.co/query?function=EMA&symbol={}&interval=daily&time_period=10&series_type=close&apikey={}"
 UNEMPLOYMENT_SERIES_ID = "LNS14000000"  # seasonally adj. from BLS website
 BLS_API_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
 
 TIME_FORMAT = "%Y-%m-%d"
 SAVED_CSV_PATH = "{}_daily.csv"
+COVID_DATA_PATH = "covid_as_of_{}.csv"
 recommendation_cols = ["date", "buy", "hold", "sell"]
 credentials = json.load(open("credentials.json", "r"))
 end = datetime.datetime.now()
@@ -118,28 +119,68 @@ def get_new_row(symbol, file):
 
 def get_data(symbol, start_date):
     print(f"pulling historical data for {symbol}...")
-    #unemployment = get_unemployment(start_date)
-    covid_data = get_covid_data(start_date)
-    #recommendation_trends = get_recommendation_trends(symbol, start_date)
-    atr = get_atr(symbol, start_date)
-    price = get_price_and_pe(symbol, start_date)
-    # news_sentiment = get_news_sentiment(symbol, start_date)
-    all_data = price.merge(covid_data, how="inner", on="date")
-    #all_data = all_data.merge(unemployment, how="inner", on="date")
-    #all_data = all_data.merge(recommendation_trends, how="outer", on="date")
-    all_data = all_data.merge(atr, how="outer", on="date")
-    all_data = all_data.fillna(method="backfill")
-    all_data.dropna(inplace=True)
-    all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False)
+    
+    daily_prices = get_daily_prices(symbol)
+    atr = get_atr(symbol)
+    sma = get_sma(symbol)
+    #ema = get_ema(symbol)
+    historical = daily_prices.merge(sma, how='inner', on='date')
+    #historical = historical.merge(ema, how='inner', on='date')
+    historical = historical.merge(atr, how='inner', on='date')
+    historical.insert(0,'close', historical.pop('close'))
+    historical.to_csv(SAVED_CSV_PATH.format(datetime.date.today()), index=False)
     print(f"wrote {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
+    covid_data = get_covid_data(start_date)
+    covid_data.to_csv(COVID_DATA_PATH.format(datetime.date.today()), index=False)
+    print(f"wrote covid data data to {COVID_DATA_PATH.format(datetime.date.today())}.")
 
 
-def get_covid_data(start_date):
+def get_covid_data():
     data = pd.read_csv(COVID_CSV_PATH)
     data["date"] = pd.to_datetime(data["date"], format=TIME_FORMAT)
-    index = pd.date_range(start_date, data["date"].max())
-    data = data.set_index("date").reindex(index, fill_value=0)
-    return data.reset_index().rename(columns={"index": "date"})
+    #index = pd.date_range(start_date, data["date"].max())
+    #data = data.set_index("date").reindex(index, fill_value=0)
+    #return data.reset_index().rename(columns={"index": "date"})
+    return data
+
+
+
+def get_daily_prices(symbol):
+    daily_prices = requests.get(DAILY_PRICES_PATH.format(symbol, credentials["av_api_key"])).json()
+    daily_prices = pd.DataFrame.from_dict(daily_prices['Time Series (Daily)'], orient='index')
+    daily_prices.drop(columns=['5. volume'], inplace=True)
+    daily_prices.reset_index(inplace=True)
+    daily_prices['index'] = pd.to_datetime(daily_prices['index'], format=TIME_FORMAT)
+    daily_prices.rename(columns={'index':'date','1. open':'open', '2. high':'high', '3. low':'low', '4. close':'close'}, inplace=True)
+    daily_prices = daily_prices.iloc[::-1]
+    return daily_prices
+
+
+def get_sma(symbol):
+    sma = requests.get(SMA_PATH.format(symbol, credentials["av_api_key"])).json()
+    sma = pd.DataFrame.from_dict(sma['Technical Analysis: SMA'], orient='index')
+    sma.reset_index(inplace=True)
+    sma['index'] = pd.to_datetime(sma['index'], format=TIME_FORMAT)
+    sma.rename(columns={'index':'date', 'SMA': 'sma'}, inplace=True)
+    return sma
+
+
+def get_ema(symbol):
+    ema = requests.get(EMA_PATH.format(symbol, credentials["av_api_key"])).json()
+    ema = pd.DataFrame.from_dict(ema['Technical Analysis: EMA'], orient='index')
+    ema.reset_index(inplace=True)
+    ema['index'] = pd.to_datetime(ema['index'], format=TIME_FORMAT)
+    ema.rename(columns={'index':'date', 'EMA': 'ema'}, inplace=True)
+    return ema
+
+def get_atr(symbol):
+    atr = requests.get(ATR_PATH.format(
+        symbol, 14, credentials["av_api_key"])).json()
+    atr = pd.DataFrame.from_dict(
+        atr["Technical Analysis: ATR"], orient="index")
+    atr = atr.reset_index().rename(columns={"index": "date", "ATR": "atr"})
+    atr["date"] = pd.to_datetime(atr["date"], format=TIME_FORMAT)
+    return atr
 
 
 def get_unemployment(start_date):
@@ -190,14 +231,7 @@ def get_recommendation_trends(symbol, start_date):
     return all_recs[all_recs["date"] >= start_date][recommendation_cols]
 
 
-def get_atr(symbol, start_date):
-    atr = requests.get(ATR_PATH.format(
-        symbol, 14, credentials["av_api_key"])).json()
-    atr = pd.DataFrame.from_dict(
-        atr["Technical Analysis: ATR"], orient="index")
-    atr = atr.reset_index().rename(columns={"index": "date", "ATR": "atr"})
-    atr["date"] = pd.to_datetime(atr["date"], format=TIME_FORMAT)
-    return atr[atr["date"] >= start_date]
+
 
 
 def get_price_and_pe(symbol, start_date):
