@@ -24,7 +24,7 @@ BLS_API_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
 TIME_FORMAT = "%Y-%m-%d"
 SAVED_CSV_PATH = "{}_daily.csv"
-COVID_DATA_PATH = "covid_as_of_{}.csv"
+COVID_DATA_PATH = "covid_{}.csv"
 recommendation_cols = ["date", "buy", "hold", "sell"]
 credentials = json.load(open("credentials.json", "r"))
 end = datetime.datetime.now()
@@ -127,8 +127,8 @@ def get_data(symbol, start_date):
     historical = daily_prices.merge(sma, how='inner', on='date')
     #historical = historical.merge(ema, how='inner', on='date')
     historical = historical.merge(atr, how='inner', on='date')
-    historical.insert(0,'close', historical.pop('close'))
-    historical.to_csv(SAVED_CSV_PATH.format(datetime.date.today()), index=False)
+    historical.insert(1,'close', historical.pop('close'))
+    historical.to_csv(SAVED_CSV_PATH.format(symbol), index=False)
     print(f"wrote {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
     covid_data = get_covid_data()
     covid_data.to_csv(COVID_DATA_PATH.format(datetime.date.today()), index=False)
