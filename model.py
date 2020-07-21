@@ -14,7 +14,7 @@ import ipdb
 
 # preprocessing constants
 TIME_STEP = 5
-PREDICTION_STEP = 1
+PREDICTION_STEP = 3
 
 # model constants
 LSTM_OUTPUT_SIZE = 128
@@ -30,9 +30,9 @@ def get_args():
     return parser.parse_args()
 
 
-def series_to_sl(values):
+def series_to_sl(values, is_covid=False):
     # values = scaler.transform(values)
-
+    
     # Split data into input and labels
     input_data = np.array(values[0: len(values)-PREDICTION_STEP])
     label = np.array(values[TIME_STEP:, 0]).reshape(-1, 1)
@@ -52,14 +52,18 @@ def series_to_sl(values):
     y = []
 
     # reshape input and label
+    
     for start, end in zip(range(0, len(input_data) - TIME_STEP), range(TIME_STEP, len(input_data))):
-        x.append(input_data[start:end])
+        if is_covid:
+            x.append(input_data[start:end, 1:])
+        else:
+            x.append(input_data[start:end])
     for start, end in zip(range(0, len(label) - PREDICTION_STEP), range(PREDICTION_STEP, len(label))):
-        y.append(label[start:end][0])
+        y.append(label[start:end, 0])
 
     x = np.array(x)
     y = np.array(y)
-
+    # ipdb.set_trace()
     return x, y, y_scaler
 
 
@@ -70,15 +74,60 @@ def load_data_from_csv(filepath):
 
 
 def prepare_data(filepath, shuffle=True):
-    data_values = load_data_from_csv(filepath)
-    input_data, label, y_scaler = series_to_sl(data_values)
+    
+    price_df = pd.read_csv(filepath, header=0)
+    covid_df = pd.read_csv('covid.csv', header=0)
+    covid_df = price_df.merge(covid_df, how='inner', on='date')
+    covid_df = covid_df[['close', 'date', 'cases', 'deaths']]
+    covid_df.drop(['date'], axis=1, inplace=True)
+    price_df.drop(['date'], axis=1, inplace=True)
+    price_values = price_df.to_numpy().astype("float32")
+    covid_values = covid_df.to_numpy().astype("float32")
+    
+    covid_input, covid_label, scaler = series_to_sl(covid_values, is_covid=True)
+    test_portion = int(covid_label.shape[0]*0.15)
+    overall_portion = int(covid_label.shape[0]*0.25)
     x_train, x_test, y_train, y_test = train_test_split(
-        input_data, label, test_size=0.25, shuffle=shuffle)
-    return x_train, x_test, y_train, y_test, y_scaler
+        covid_input, covid_label, test_size=test_portion, shuffle=shuffle)
+
+    #Further split training data to train for individual model vs. train for overall model
+    
+    x_train_overall = x_train[len(x_train)-overall_portion:, :, :]
+    y_train_overall = y_train[len(y_train)-overall_portion:, :]
+    x_train_individual = x_train[:len(x_train)-overall_portion, :, :]
+    y_train_individual = y_train[:len(y_train)-overall_portion, :]
+
+    covid_data = {"x_train_individual": x_train_individual,
+                    "x_test": x_test,
+                    "y_train_individual": y_train_individual,
+                    "y_test": y_test,
+                    "x_train_overall":x_train_overall,
+                    "y_train_overall":y_train_overall,
+                    "scaler": scaler}
+
+    input_data, label, scaler = series_to_sl(price_values, is_covid=False)
+    x_train, x_test, y_train, y_test = train_test_split(
+        input_data, label, test_size=test_portion, shuffle=shuffle)
+    
+    x_train_overall = x_train[len(x_train)-overall_portion:, :, :]
+    y_train_overall = y_train[len(y_train)-overall_portion:, :]
+    x_train_individual = x_train[:len(x_train)-overall_portion, :, :]
+    y_train_individual = y_train[:len(y_train)-overall_portion, :]
+    
+    price_data = {"x_train_individual": x_train_individual,
+                    "x_test": x_test,
+                    "y_train_individual": y_train_individual,
+                    "y_test": y_test,
+                    "x_train_overall":x_train_overall,
+                    "y_train_overall":y_train_overall,
+                    "scaler": scaler}
+    
+
+    return price_data, covid_data
 
 def build_covid_model(x_train, y_train, batch_size, epochs,): 
     covid_model = Sequential()
-    covid_data = x_train[:,:, 3:len(x_train[0][0])-1]
+    covid_data = x_train
     covid_model.add(LSTM(LSTM_OUTPUT_SIZE, input_shape=(covid_data.shape[1:]), return_sequences=True))
     covid_model.add(Dropout(0.2))
     covid_model.add(BatchNormalization())
@@ -87,8 +136,8 @@ def build_covid_model(x_train, y_train, batch_size, epochs,):
     covid_model.add(Dropout(0.2))
     covid_model.add(BatchNormalization())
 
-    covid_model.add(Dense(DENSE1_OUTPUT_SIZE, activation='relu'))
-    covid_model.add(Dense(DENSE2_OUTPUT_SIZE, activation='sigmoid'))
+    covid_model.add(Dense(DENSE2_OUTPUT_SIZE, activation='relu'))
+    covid_model.add(Dense(DENSE3_OUTPUT_SIZE, activation='sigmoid'))
 
     covid_model.compile(loss='mse', optimizer='adam')
 
@@ -98,7 +147,7 @@ def build_covid_model(x_train, y_train, batch_size, epochs,):
 
 def build_price_model(x_train, y_train, batch_size, epochs,): 
     price_model = Sequential()
-    price_data = x_train[:,:, np.r_[0:3, 5]]
+    price_data = x_train
 
     price_model.add(LSTM(LSTM_OUTPUT_SIZE, input_shape=(price_data.shape[1:]), return_sequences=False))
     price_model.add(Dropout(0.2))
@@ -108,8 +157,8 @@ def build_price_model(x_train, y_train, batch_size, epochs,):
     # price_model.add(Dropout(0.2))
     # price_model.add(BatchNormalization())
 
-    price_model.add(Dense(DENSE1_OUTPUT_SIZE, activation='relu'))
-    price_model.add(Dense(DENSE2_OUTPUT_SIZE, activation='sigmoid'))
+    price_model.add(Dense(DENSE2_OUTPUT_SIZE, activation='relu'))
+    price_model.add(Dense(DENSE3_OUTPUT_SIZE, activation='sigmoid'))
 
     price_model.compile(loss='mse', optimizer='adam')
 
@@ -117,10 +166,13 @@ def build_price_model(x_train, y_train, batch_size, epochs,):
     return price_model
 
 
-def build_overall_model(x_train, y_train, x_test, y_test, batch_size, epochs,):
+def build_overall_model(price_data, covid_data, batch_size, epochs,):
     #covid_model 
 
-    input_models = [build_covid_model(x_train, y_train, batch_size, epochs), build_price_model(x_train, y_train, batch_size, epochs)]
+    input_models = [
+        build_covid_model(covid_data['x_train_individual'], covid_data['y_train_individual'], batch_size, epochs), 
+        build_price_model(price_data['x_train_individual'], price_data['y_train_individual'], batch_size, epochs)
+    ]
     for i in range(len(input_models)):
         model = input_models[i]
         for layer in model.layers:
@@ -163,50 +215,55 @@ def build_overall_model(x_train, y_train, x_test, y_test, batch_size, epochs,):
 
     return model
 
-def fit_overall_model(model, x_train, y_train, epochs):
-    covid_input = x_train[:,:, 3:len(x_train[0][0])-1]
-    price_input = x_train[:,:, np.r_[0:3, 5]]
+def fit_overall_model(model, price_data, covid_data, epochs):
+    covid_input = covid_data['x_train_overall']
+    price_input = price_data['x_train_overall']
+    covid_label = covid_data['y_train_overall']
+    price_label = price_data['y_train_overall']
+    # ipdb.set_trace()
 	# fit model
-    model.fit([covid_input, price_input], y_train, epochs=epochs, verbose=0, shuffle=True)
+    model.fit([covid_input, price_input], covid_label, epochs=epochs, verbose=0, shuffle=True)
 
 # make a prediction with a stacked model
-def predict_overall_model(model, x_train):
+def predict_overall_model(model, price_data, covid_data,):
 	# prepare input data
-    covid_input = x_train[:,:, 3:len(x_train[0][0])-1]
-    price_input = x_train[:,:, np.r_[0:3, 5]]
+    covid_input = covid_data['x_test']
+    price_input = price_data['x_test']
 	# make prediction
     return model.predict([covid_input, price_input], verbose=0)
 
 
 def model_prediction(symbol):
     prediction = []
-    for i in range(0, 10):
-        shuffle = True if i % 2 == 0 else False
-        x_train, x_test, y_train, y_test, scaler = prepare_data(
-            f"{symbol}_daily.csv", shuffle=shuffle)
+    #for i in range(0, 10):
+    # shuffle = True if i % 2 == 0 else False
+    price_data, covid_data = prepare_data(
+        f"{symbol}_daily.csv", shuffle=True)
 
-        model = build_overall_model(x_train, y_train, x_test, y_test, batch_size=10, epochs=100,)
-        fit_overall_model(model, x_test, y_test, epochs=100)
-        
-        x_train, x_test, y_train, y_test, scaler = prepare_data(
-            f"{symbol}_daily.csv", shuffle=False)
-        
-        if i == 0 :
-            prediction = predict_overall_model(model, x_test)
-        else:
-            prediction += predict_overall_model(model, x_test)
+    #keys for: "x_train", "x_test", "y_train", "y_test", "scaler"
+
+    model = build_overall_model(price_data, covid_data, batch_size=10, epochs=200)
+    fit_overall_model(model, price_data, covid_data, epochs=200)
+    
+    price_data, covid_data = prepare_data(
+        f"{symbol}_daily.csv", shuffle=False)
+    
+    # if i == 0 :
+    prediction = predict_overall_model(model, price_data, covid_data)
+    # else:
+    #     prediction += predict_overall_model(model, x_test)
     # _, x_test_no_shuffle, _, y_test_no_shuffle, y_scaler = prepare_data(
     #     f"{symbol}_daily.csv", shuffle=False)
 
     
     # prediction = model.predict(x_test_no_shuffle, batch_size=10)
-    prediction = np.array(scaler.inverse_transform(prediction/10))
+    prediction = np.array(prediction)
     # mean = prediction.mean()
     # prediction -= mean
     # prediction *= 100
     # prediction += mean
     pyplot.plot(prediction, label='prediction')
-    pyplot.plot(scaler.inverse_transform(y_test), label='actual')
+    pyplot.plot(covid_data['y_test'], label='actual')
     pyplot.legend()
     pyplot.show()
 

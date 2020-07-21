@@ -1,4 +1,4 @@
-from iexfinance.stocks import get_historical_data
+# from iexfinance.stocks import get_historical_data
 from datetime import datetime, timedelta
 import csv
 import argparse
@@ -24,7 +24,7 @@ BLS_API_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
 TIME_FORMAT = "%Y-%m-%d"
 SAVED_CSV_PATH = "{}_daily.csv"
-COVID_DATA_PATH = "covid_{}.csv"
+COVID_DATA_PATH = "covid.csv"
 recommendation_cols = ["date", "buy", "hold", "sell"]
 credentials = json.load(open("credentials.json", "r"))
 end = datetime.datetime.now()
@@ -131,8 +131,8 @@ def get_data(symbol, start_date):
     historical.to_csv(SAVED_CSV_PATH.format(symbol), index=False)
     print(f"wrote {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
     covid_data = get_covid_data()
-    covid_data.to_csv(COVID_DATA_PATH.format(datetime.date.today()), index=False)
-    print(f"wrote covid data data to {COVID_DATA_PATH.format(datetime.date.today())}.")
+    covid_data.to_csv(COVID_DATA_PATH, index=False)
+    print(f"wrote covid data data to {COVID_DATA_PATH}.")
 
 
 def get_covid_data():
@@ -234,59 +234,59 @@ def get_recommendation_trends(symbol, start_date):
 
 
 
-def get_price_and_pe(symbol, start_date):
-    data = []
-    counter = 1
-    hist = get_historical_data(
-        symbol, start_date, end, close_only=True, token=credentials["iex_token"]
-    )
+# def get_price_and_pe(symbol, start_date):
+#     data = []
+#     counter = 1
+#     hist = get_historical_data(
+#         symbol, start_date, end, close_only=True, token=credentials["iex_token"]
+#     )
 
-    for day in hist:
-        price = hist[day]["close"]
-        temp = [day, price]
-        if counter == 1:
-            temp.append(price)
-        elif counter == 2:
-            temp.append((price + data[counter - 2][1]) / 2)
-        elif counter == 3:
-            temp.append((price + data[counter - 2]
-                         [1] + data[counter - 3][1]) / 3)
-        elif counter == 4:
-            temp.append(
-                (
-                    price
-                    + data[counter - 2][1]
-                    + data[counter - 3][1]
-                    + data[counter - 4][1]
-                )
-                / 4
-            )
-        else:
-            temp.append(
-                (
-                    price
-                    + data[counter - 2][1]
-                    + data[counter - 3][1]
-                    + data[counter - 4][1]
-                    + data[counter - 5][1]
-                )
-                / 5
-            )
+#     for day in hist:
+#         price = hist[day]["close"]
+#         temp = [day, price]
+#         if counter == 1:
+#             temp.append(price)
+#         elif counter == 2:
+#             temp.append((price + data[counter - 2][1]) / 2)
+#         elif counter == 3:
+#             temp.append((price + data[counter - 2]
+#                          [1] + data[counter - 3][1]) / 3)
+#         elif counter == 4:
+#             temp.append(
+#                 (
+#                     price
+#                     + data[counter - 2][1]
+#                     + data[counter - 3][1]
+#                     + data[counter - 4][1]
+#                 )
+#                 / 4
+#             )
+#         else:
+#             temp.append(
+#                 (
+#                     price
+#                     + data[counter - 2][1]
+#                     + data[counter - 3][1]
+#                     + data[counter - 4][1]
+#                     + data[counter - 5][1]
+#                 )
+#                 / 5
+#             )
 
-        counter += 1
-        temp.append(price / eps)
-        data.append(temp)
+#         counter += 1
+#         temp.append(price / eps)
+#         data.append(temp)
 
-    res = {}
-    for row in data:
-        res[row[0]] = row[1:]
+#     res = {}
+#     for row in data:
+#         res[row[0]] = row[1:]
 
-    res = pd.DataFrame.from_dict(res, orient="index")
-    res = res.reset_index().rename(
-        columns={"index": "date", 0: "closePrice", 1: "simpleAvg", 2: "pe"}
-    )
-    res["date"] = pd.to_datetime(res["date"], format=TIME_FORMAT)
-    return res
+#     res = pd.DataFrame.from_dict(res, orient="index")
+#     res = res.reset_index().rename(
+#         columns={"index": "date", 0: "closePrice", 1: "simpleAvg", 2: "pe"}
+#     )
+#     res["date"] = pd.to_datetime(res["date"], format=TIME_FORMAT)
+#     return res
 
 
 def get_news_sentimenet(symbol, start_date):
