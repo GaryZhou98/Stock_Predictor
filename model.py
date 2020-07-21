@@ -179,24 +179,34 @@ def predict_overall_model(model, x_train):
 
 
 def model_prediction(symbol):
+    prediction = []
+    for i in range(0, 10):
+        shuffle = True if i % 2 == 0 else False
+        x_train, x_test, y_train, y_test, scaler = prepare_data(
+            f"{symbol}_daily.csv", shuffle=shuffle)
 
-    x_train, x_test, y_train, y_test, scaler = prepare_data(
-        f"{symbol}_daily.csv", shuffle=False)
-
-    model = build_overall_model(x_train, y_train, x_test, y_test, batch_size=10, epochs=200,)
-    fit_overall_model(model, x_test, y_test, epochs=200)
-    prediction = predict_overall_model(model, x_test)
+        model = build_overall_model(x_train, y_train, x_test, y_test, batch_size=10, epochs=100,)
+        fit_overall_model(model, x_test, y_test, epochs=100)
+        
+        x_train, x_test, y_train, y_test, scaler = prepare_data(
+            f"{symbol}_daily.csv", shuffle=False)
+        
+        if i == 0 :
+            prediction = predict_overall_model(model, x_test)
+        else:
+            prediction += predict_overall_model(model, x_test)
     # _, x_test_no_shuffle, _, y_test_no_shuffle, y_scaler = prepare_data(
     #     f"{symbol}_daily.csv", shuffle=False)
 
+    
     # prediction = model.predict(x_test_no_shuffle, batch_size=10)
-    prediction = np.array(prediction)
+    prediction = np.array(scaler.inverse_transform(prediction/10))
     # mean = prediction.mean()
     # prediction -= mean
     # prediction *= 100
     # prediction += mean
     pyplot.plot(prediction, label='prediction')
-    pyplot.plot(y_test, label='actual')
+    pyplot.plot(scaler.inverse_transform(y_test), label='actual')
     pyplot.legend()
     pyplot.show()
 
