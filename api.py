@@ -130,7 +130,7 @@ def get_data(symbol, start_date):
     historical.insert(0,'close', historical.pop('close'))
     historical.to_csv(SAVED_CSV_PATH.format(datetime.date.today()), index=False)
     print(f"wrote {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
-    covid_data = get_covid_data(start_date)
+    covid_data = get_covid_data()
     covid_data.to_csv(COVID_DATA_PATH.format(datetime.date.today()), index=False)
     print(f"wrote covid data data to {COVID_DATA_PATH.format(datetime.date.today())}.")
 
