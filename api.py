@@ -8,23 +8,37 @@ import json
 import pandas as pd
 import numpy as np
 import requests
+import time
 
 COVID_CSV_PATH = "https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv"
 RECOMMENDATION_TRENDS_PATH = (
     "https://finnhub.io/api/v1/stock/recommendation?symbol={}&token={}"
 )
 NEWS_SENTIMENT_PATH = "https://finnhub.io/api/v1/news-sentiment?symbol={}&token={}"
-ATR_PATH = "https://www.alphavantage.co/query?function=ATR&symbol={}&interval=daily&time_period={}&apikey={}"
 DAILY_PRICES_PATH = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&outputsize=full&apikey={}"
-SMA_PATH = "https://www.alphavantage.co/query?function=SMA&symbol={}&interval=daily&time_period=10&series_type=close&apikey={}"
-EMA_PATH = "https://www.alphavantage.co/query?function=EMA&symbol={}&interval=daily&time_period=10&series_type=close&apikey={}"
+
+PRICE_INDICATORS = {
+    "ATR": "https://www.alphavantage.co/query?function=ATR&symbol={}&interval=daily&time_period=14&apikey={}",
+    "SMA": "https://www.alphavantage.co/query?function=SMA&symbol={}&interval=daily&time_period=10&series_type=close&apikey={}",
+    "EMA": "https://www.alphavantage.co/query?function=EMA&symbol={}&interval=daily&time_period=10&series_type=close&apikey={}",
+    "MACD": "https://www.alphavantage.co/query?function=MACD&symbol={}&interval=daily&series_type=close&apikey={}",
+    "STOCH": "https://www.alphavantage.co/query?function=STOCH&symbol={}&interval=daily&apikey={}",
+    "RSI": "https://www.alphavantage.co/query?function=RSI&symbol={}&interval=daily&time_period=10&series_type=close&apikey={}",
+    "ADX": "https://www.alphavantage.co/query?function=ADX&symbol={}&interval=daily&time_period=10&apikey={}",
+    "BBANDS": "https://www.alphavantage.co/query?function=BBANDS&symbol={}&interval=daily&time_period=5&series_type=close&nbdevup=3&nbdevdn=3&apikey={}",
+    "OBV": "https://www.alphavantage.co/query?function=OBV&symbol=IBM&interval=daily&apikey={}",
+    "CCI": "https://www.alphavantage.co/query?function=CCI&symbol={}&interval=daily&time_period=10&apikey={}",
+    "AROON": "https://www.alphavantage.co/query?function=AROON&symbol={}&interval=daily&time_period=14&apikey={}",
+}
+
+
 UNEMPLOYMENT_SERIES_ID = "LNS14000000"  # seasonally adj. from BLS website
 BLS_API_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
 
 TIME_FORMAT = "%Y-%m-%d"
 SAVED_CSV_PATH = "{}_daily.csv"
-COVID_DATA_PATH = "covid_{}.csv"
+COVID_DATA_PATH = "covid.csv"
 recommendation_cols = ["date", "buy", "hold", "sell"]
 credentials = json.load(open("credentials.json", "r"))
 end = datetime.datetime.now()
@@ -42,10 +56,8 @@ def get_args():
         type=lambda s: datetime.datetime.strptime(s, TIME_FORMAT),
         default=(datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT),
     )
-    parser.add_argument(
-        "-s", "--symbol", help="symbol to pull data on", default=False)
-    parser.add_argument(
-        "-f", "--file", help="pull symbols from file", default=False)
+    parser.add_argument("-s", "--symbol", help="symbol to pull data on", default=False)
+    parser.add_argument("-f", "--file", help="pull symbols from file", default=False)
     parser.add_argument(
         "-n", "--new_row", help="add new data to existing csv", action="store_false"
     )
@@ -63,12 +75,11 @@ def get_new_row(symbol, file):
     last_date = prev_price_data.tail(1)["date"].values[0]
     if last_date >= (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT):
         print(
-            f"Newest data for {symbol} has already been appended, aborting operation.")
+            f"Newest data for {symbol} has already been appended, aborting operation."
+        )
         return
-    prev_price_data = prev_price_data["closePrice"].to_numpy().astype(
-        'float64')
-    price = requests.get(PRICE_PATH.format(
-        symbol, credentials["av_api_key"])).json()
+    prev_price_data = prev_price_data["closePrice"].to_numpy().astype("float64")
+    price = requests.get(PRICE_PATH.format(symbol, credentials["av_api_key"])).json()
     price = float(
         price["Time Series (Daily)"][
             (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)
@@ -91,8 +102,7 @@ def get_new_row(symbol, file):
         (datetime.date.today() - timedelta(1)).strftime(TIME_FORMAT)
     )
     recommendation_trends = requests.get(
-        RECOMMENDATION_TRENDS_PATH.format(
-            symbol, credentials["finnhub_api_key"])
+        RECOMMENDATION_TRENDS_PATH.format(symbol, credentials["finnhub_api_key"])
     ).json()[0]
     recommendation_trends = pd.DataFrame(recommendation_trends, index=[0]).drop(
         ["period", "symbol"], axis=1
@@ -106,81 +116,88 @@ def get_new_row(symbol, file):
     all_data = all_data.merge(
         recommendation_trends, how="outer", left_index=True, right_index=True
     )
-    all_data = all_data.merge(
-        atr, how="outer", left_index=True, right_index=True)
+    all_data = all_data.merge(atr, how="outer", left_index=True, right_index=True)
     all_data = all_data.fillna(method="backfill")
     all_data = all_data.drop(["date_y", "index", "date"], axis=1).rename(
         columns={"date_x": "date"}
     )
-    all_data.to_csv(SAVED_CSV_PATH.format(symbol),
-                    index=False, mode="a", header=False)
+    all_data.to_csv(SAVED_CSV_PATH.format(symbol), index=False, mode="a", header=False)
     print(f"added new {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
 
 
 def get_data(symbol, start_date):
     print(f"pulling historical data for {symbol}...")
-    
+
     daily_prices = get_daily_prices(symbol)
-    atr = get_atr(symbol)
-    sma = get_sma(symbol)
-    #ema = get_ema(symbol)
-    historical = daily_prices.merge(sma, how='inner', on='date')
-    #historical = historical.merge(ema, how='inner', on='date')
-    historical = historical.merge(atr, how='inner', on='date')
-    historical.insert(1,'close', historical.pop('close'))
+    price_indicators = get_price_indicators(symbol)
+    historical = daily_prices.merge(price_indicators, how="inner", on="date")
+    historical.insert(1, "close", historical.pop("close"))
     historical.to_csv(SAVED_CSV_PATH.format(symbol), index=False)
     print(f"wrote {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
     covid_data = get_covid_data()
-    covid_data.to_csv(COVID_DATA_PATH.format(datetime.date.today()), index=False)
-    print(f"wrote covid data data to {COVID_DATA_PATH.format(datetime.date.today())}.")
+    covid_data.to_csv(COVID_DATA_PATH, index=False)
+    print(f"wrote covid data data to {COVID_DATA_PATH}.")
 
 
 def get_covid_data():
     data = pd.read_csv(COVID_CSV_PATH)
     data["date"] = pd.to_datetime(data["date"], format=TIME_FORMAT)
-    #index = pd.date_range(start_date, data["date"].max())
-    #data = data.set_index("date").reindex(index, fill_value=0)
-    #return data.reset_index().rename(columns={"index": "date"})
     return data
 
 
-
 def get_daily_prices(symbol):
-    daily_prices = requests.get(DAILY_PRICES_PATH.format(symbol, credentials["av_api_key"])).json()
-    daily_prices = pd.DataFrame.from_dict(daily_prices['Time Series (Daily)'], orient='index')
-    daily_prices.drop(columns=['5. volume'], inplace=True)
+    daily_prices = requests.get(
+        DAILY_PRICES_PATH.format(symbol, credentials["av_api_key"])
+    ).json()
+    daily_prices = pd.DataFrame.from_dict(
+        daily_prices["Time Series (Daily)"], orient="index"
+    )
+    daily_prices.drop(columns=["5. volume"], inplace=True)
     daily_prices.reset_index(inplace=True)
-    daily_prices['index'] = pd.to_datetime(daily_prices['index'], format=TIME_FORMAT)
-    daily_prices.rename(columns={'index':'date','1. open':'open', '2. high':'high', '3. low':'low', '4. close':'close'}, inplace=True)
+    daily_prices["index"] = pd.to_datetime(daily_prices["index"], format=TIME_FORMAT)
+    daily_prices.rename(
+        columns={
+            "index": "date",
+            "1. open": "open",
+            "2. high": "high",
+            "3. low": "low",
+            "4. close": "close",
+        },
+        inplace=True,
+    )
     daily_prices = daily_prices.iloc[::-1]
     return daily_prices
 
 
-def get_sma(symbol):
-    sma = requests.get(SMA_PATH.format(symbol, credentials["av_api_key"])).json()
-    sma = pd.DataFrame.from_dict(sma['Technical Analysis: SMA'], orient='index')
-    sma.reset_index(inplace=True)
-    sma['index'] = pd.to_datetime(sma['index'], format=TIME_FORMAT)
-    sma.rename(columns={'index':'date', 'SMA': 'sma'}, inplace=True)
-    return sma
+def get_price_indicators(symbol):
+    print("maximum API requests per minute reached. waiting one minute...")
+    time.sleep(60)
+    indicators = pd.DataFrame(columns=["date"])
+    i = 0
+    for indicator, path in PRICE_INDICATORS.items():
+        if i % 5 == 0:
+            print(indicator)
+            print("maximum API requests per minute reached. waiting one minute...")
+            time.sleep(60)
+        indicators = indicators.merge(
+            get_price_indicator(symbol, indicator, path), how="outer", on="date"
+        )
+        i += 1
+    print("maximum API requests per minute reached. waiting one minute...")
+    time.sleep(60)
+    return indicators.dropna()
 
 
-def get_ema(symbol):
-    ema = requests.get(EMA_PATH.format(symbol, credentials["av_api_key"])).json()
-    ema = pd.DataFrame.from_dict(ema['Technical Analysis: EMA'], orient='index')
-    ema.reset_index(inplace=True)
-    ema['index'] = pd.to_datetime(ema['index'], format=TIME_FORMAT)
-    ema.rename(columns={'index':'date', 'EMA': 'ema'}, inplace=True)
-    return ema
-
-def get_atr(symbol):
-    atr = requests.get(ATR_PATH.format(
-        symbol, 14, credentials["av_api_key"])).json()
-    atr = pd.DataFrame.from_dict(
-        atr["Technical Analysis: ATR"], orient="index")
-    atr = atr.reset_index().rename(columns={"index": "date", "ATR": "atr"})
-    atr["date"] = pd.to_datetime(atr["date"], format=TIME_FORMAT)
-    return atr
+def get_price_indicator(symbol, indicator, path):
+    path = path.format(symbol, credentials["av_api_key"])
+    p_i = requests.get(path).json()
+    p_i = pd.DataFrame.from_dict(
+        p_i[f"Technical Analysis: {indicator}"], orient="index"
+    )
+    p_i.reset_index(inplace=True)
+    p_i["index"] = pd.to_datetime(p_i["index"], format=TIME_FORMAT)
+    p_i.rename(columns={"index": "date", indicator: indicator.lower()}, inplace=True)
+    return p_i
 
 
 def get_unemployment(start_date):
@@ -192,12 +209,10 @@ def get_unemployment(start_date):
             "endyear": datetime.date.today().year,
         }
     )
-    res = json.loads(requests.post(
-        BLS_API_URL, data=data, headers=headers).text)
+    res = json.loads(requests.post(BLS_API_URL, data=data, headers=headers).text)
     df = pd.DataFrame.from_dict(res["Results"]["series"][0]["data"])
     df["period"] = pd.to_datetime(df["periodName"] + " " + df["year"])
-    df.drop(columns=["year", "periodName",
-                     "latest", "footnotes"], inplace=True)
+    df.drop(columns=["year", "periodName", "latest", "footnotes"], inplace=True)
     index = pd.date_range(df["period"].min(), datetime.date.today())
     df = df.set_index("period").reindex(index, method="backfill")
     df = df.reset_index()
@@ -208,8 +223,7 @@ def get_unemployment(start_date):
 
 def get_recommendation_trends(symbol, start_date):
     all_recs = requests.get(
-        RECOMMENDATION_TRENDS_PATH.format(
-            symbol, credentials["finnhub_api_key"])
+        RECOMMENDATION_TRENDS_PATH.format(symbol, credentials["finnhub_api_key"])
     ).json()
     all_recs = pd.DataFrame.from_records(all_recs)
     first_day_of_month = start_date.replace(day=1)
@@ -231,9 +245,6 @@ def get_recommendation_trends(symbol, start_date):
     return all_recs[all_recs["date"] >= start_date][recommendation_cols]
 
 
-
-
-
 def get_price_and_pe(symbol, start_date):
     data = []
     counter = 1
@@ -249,8 +260,7 @@ def get_price_and_pe(symbol, start_date):
         elif counter == 2:
             temp.append((price + data[counter - 2][1]) / 2)
         elif counter == 3:
-            temp.append((price + data[counter - 2]
-                         [1] + data[counter - 3][1]) / 3)
+            temp.append((price + data[counter - 2][1] + data[counter - 3][1]) / 3)
         elif counter == 4:
             temp.append(
                 (
