@@ -9,6 +9,7 @@ from tensorflow.keras.layers import Dense, Input, Activation, LSTM, Dropout, Bat
 from matplotlib import pyplot
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+from api import COVID_COLUMNS
 import numpy as np
 import ipdb
 import datetime
@@ -85,8 +86,11 @@ def prepare_data(filepath, shuffle=True):
     # price_df = price_df.loc[price_df['date']]
     covid_df = pd.read_csv('covid.csv', header=0)
     covid_df = price_df.merge(covid_df, how='inner', on='date')
+    covid_df.fillna(value=0, inplace=True)
+    # covid_df = covid_df[['close', 'date', 'cases', 'deaths']]
+    # covid_df = price_df.merge(covid_df, how='left', on='date')
     # covid_df.fillna(value=0, inplace=True)
-    covid_df = covid_df[['close', 'date', 'cases', 'deaths']]
+    covid_df = covid_df[['close']+COVID_COLUMNS]
     covid_df.drop(['date'], axis=1, inplace=True)
     price_df.drop(['date'], axis=1, inplace=True)
     price_values = price_df.to_numpy().astype("float32")

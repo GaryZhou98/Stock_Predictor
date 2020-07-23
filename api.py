@@ -10,7 +10,8 @@ import numpy as np
 import requests
 import time
 
-COVID_CSV_PATH = "https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv"
+COVID_CSV_PATH = "https://covidtracking.com/api/v1/us/daily.csv"
+COVID_COLUMNS = ['date','positive','negative','death','hospitalized','deathIncrease','hospitalizedIncrease','negativeIncrease', 'positiveIncrease']
 RECOMMENDATION_TRENDS_PATH = (
     "https://finnhub.io/api/v1/stock/recommendation?symbol={}&token={}"
 )
@@ -127,7 +128,6 @@ def get_new_row(symbol, file):
 
 def get_data(symbol, start_date):
     print(f"pulling historical data for {symbol}...")
-
     daily_prices = get_daily_prices(symbol)
     price_indicators = get_price_indicators(symbol)
     historical = daily_prices.merge(price_indicators, how="inner", on="date")
@@ -141,7 +141,11 @@ def get_data(symbol, start_date):
 
 def get_covid_data():
     data = pd.read_csv(COVID_CSV_PATH)
-    data["date"] = pd.to_datetime(data["date"], format=TIME_FORMAT)
+    data["date"] = pd.to_datetime(data["date"], format='%Y%m%d')
+    data = data.sort_values(by='date', ascending=True)
+    data.reset_index(inplace=True)
+    data = data[COVID_COLUMNS]
+    data.fillna(0, inplace=True)
     return data
 
 
