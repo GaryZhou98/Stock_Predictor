@@ -245,64 +245,6 @@ def get_recommendation_trends(symbol, start_date):
     return all_recs[all_recs["date"] >= start_date][recommendation_cols]
 
 
-
-
-
-# def get_price_and_pe(symbol, start_date):
-#     data = []
-#     counter = 1
-#     hist = get_historical_data(
-#         symbol, start_date, end, close_only=True, token=credentials["iex_token"]
-#     )
-
-#     for day in hist:
-#         price = hist[day]["close"]
-#         temp = [day, price]
-#         if counter == 1:
-#             temp.append(price)
-#         elif counter == 2:
-#             temp.append((price + data[counter - 2][1]) / 2)
-#         elif counter == 3:
-#             temp.append((price + data[counter - 2]
-#                          [1] + data[counter - 3][1]) / 3)
-#         elif counter == 4:
-#             temp.append(
-#                 (
-#                     price
-#                     + data[counter - 2][1]
-#                     + data[counter - 3][1]
-#                     + data[counter - 4][1]
-#                 )
-#                 / 4
-#             )
-#         else:
-#             temp.append(
-#                 (
-#                     price
-#                     + data[counter - 2][1]
-#                     + data[counter - 3][1]
-#                     + data[counter - 4][1]
-#                     + data[counter - 5][1]
-#                 )
-#                 / 5
-#             )
-
-#         counter += 1
-#         temp.append(price / eps)
-#         data.append(temp)
-
-#     res = {}
-#     for row in data:
-#         res[row[0]] = row[1:]
-
-#     res = pd.DataFrame.from_dict(res, orient="index")
-#     res = res.reset_index().rename(
-#         columns={"index": "date", 0: "closePrice", 1: "simpleAvg", 2: "pe"}
-#     )
-#     res["date"] = pd.to_datetime(res["date"], format=TIME_FORMAT)
-#     return res
-
-
 def get_news_sentimenet(symbol, start_date):
     print("get_news_sentiment is NOT YET IMPLEMENTED")
 
