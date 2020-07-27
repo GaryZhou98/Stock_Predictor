@@ -126,7 +126,7 @@ def get_new_row(symbol, file):
     print(f"added new {symbol} data to {SAVED_CSV_PATH.format(symbol)}.")
 
 
-def get_data(symbol, start_date):
+def get_data(symbol):
     print(f"pulling historical data for {symbol}...")
     daily_prices = get_daily_prices(symbol)
     price_indicators = get_price_indicators(symbol)
@@ -263,9 +263,9 @@ if __name__ == "__main__":
         get_new_row(args.symbol, args.file)
         exit(1)
     elif args.symbol:
-        get_data(args.symbol, args.start_date)
-        if args.file:
-            symbols = iter(get_row_from_csv(args.file))
-            for row in symbols:
-                for symbol in row:
-                    get_data(symbol, args.start_date)
+        get_data(args.symbol)
+    elif args.file:
+        symbols = iter(get_row_from_csv(args.file))
+        for row in symbols:
+            for symbol in row:
+                get_data(symbol)

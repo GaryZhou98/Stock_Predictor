@@ -15,8 +15,8 @@ import ipdb
 import datetime
 
 # preprocessing constants
-TIME_STEP = 5
-PREDICTION_STEP = 3
+TIME_STEP = 10
+PREDICTION_STEP = 10
 
 # model constants
 LSTM_OUTPUT_SIZE = 128
@@ -24,16 +24,16 @@ DENSE1_OUTPUT_SIZE = 64
 DENSE2_OUTPUT_SIZE = 32
 DENSE3_OUTPUT_SIZE = PREDICTION_STEP
 
-PRICE_EPOCH = 100
-COVID_EPOCH = 1000
-OVERALL_EPOCH = 1000
+PRICE_EPOCH = 200
+COVID_EPOCH = 50
+OVERALL_EPOCH = 100
 
-TEST_PORTION = 0.2
+TEST_PORTION = 0.1
 OVERALL_TRAIN_PORTION = 0.4
 
 TRAIN_SHUFFLE = True
 
-NUM_TRAIN = 2
+NUM_TRAIN = 3
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -76,20 +76,15 @@ def series_to_sl(values, is_covid=False):
 
     x = np.array(x)
     y = np.array(y)
-    # ipdb.set_trace()
-    return x, y, y_scaler
 
+    return x, y, y_scaler
 
 def prepare_data(filepath, shuffle=True):
 
     price_df = pd.read_csv(filepath, header=0)
-    # price_df = price_df.loc[price_df['date']]
     covid_df = pd.read_csv('covid.csv', header=0)
-    covid_df = price_df.merge(covid_df, how='inner', on='date')
+    covid_df = price_df.merge(covid_df, how='left', on='date')
     covid_df.fillna(value=0, inplace=True)
-    # covid_df = covid_df[['close', 'date', 'cases', 'deaths']]
-    # covid_df = price_df.merge(covid_df, how='left', on='date')
-    # covid_df.fillna(value=0, inplace=True)
     covid_df = covid_df[['close']+COVID_COLUMNS]
     covid_df.drop(['date'], axis=1, inplace=True)
     price_df.drop(['date'], axis=1, inplace=True)
@@ -136,6 +131,37 @@ def prepare_data(filepath, shuffle=True):
 
     return price_data, covid_data
 
+def prepare_prediction_data(filepath):
+    price_df = pd.read_csv(filepath, header=0)
+    covid_df = pd.read_csv('covid.csv', header=0)
+    covid_df = price_df.merge(covid_df, how='left', on='date')
+    covid_df.fillna(value=0, inplace=True)
+    covid_df = covid_df[['close']+COVID_COLUMNS]
+    covid_df.drop(['date'], axis=1, inplace=True)
+    price_df.drop(['date'], axis=1, inplace=True)
+    price_values = price_df.to_numpy().astype("float32")
+    covid_values = covid_df.to_numpy().astype("float32")
+
+    covid_data = np.array(covid_values[len(covid_values)-PREDICTION_STEP:])
+    for i in range(0, covid_data.shape[1]):
+        temp = covid_data[:, i].reshape(-1, 1)
+        covid_data[:, i] = MinMaxScaler(
+            feature_range=(0, 1)).fit(temp).transform(temp)[:, 0]
+    covid_data = covid_data[:, 1:]
+
+    price_data = np.array(price_values[len(price_values)-PREDICTION_STEP:])
+    for i in range(0, price_data.shape[1]):
+        temp = price_data[:, i].reshape(-1, 1)
+        price_data[:, i] = MinMaxScaler(
+            feature_range=(0, 1)).fit(temp).transform(temp)[:, 0]
+    
+    covid_x = covid_data.reshape(1, covid_data.shape[0], covid_data.shape[1])
+    price_x = price_data.reshape(1, price_data.shape[0], price_data.shape[1])
+
+    price_predic_data = {'x_test': price_x}
+    covid_predic_data = {'x_test': covid_x}
+    return price_predic_data, covid_predic_data
+
 def build_covid_model(x_train, y_train, batch_size,): 
     covid_model = Sequential()
     covid_data = x_train
@@ -163,7 +189,11 @@ def build_price_model(x_train, y_train, batch_size,):
     price_data = x_train
 
     price_model.add(LSTM(LSTM_OUTPUT_SIZE, input_shape=(
-        price_data.shape[1:]), return_sequences=False))
+        price_data.shape[1:]), return_sequences=True))
+    price_model.add(Dropout(0.2))
+    price_model.add(BatchNormalization())
+
+    price_model.add(LSTM(LSTM_OUTPUT_SIZE, return_sequences=False))
     price_model.add(Dropout(0.2))
     price_model.add(BatchNormalization())
 
@@ -195,7 +225,7 @@ def build_overall_model(price_data, covid_data, batch_size,):
 
     # define multi-headed input
     ensemble_inputs = [model.input for model in input_models]
-    # ipdb.set_trace()
+
 	# concatenate merge output from each model
     ensemble_outputs = [model.output for model in input_models]
     merge = concatenate(ensemble_outputs)
@@ -214,12 +244,12 @@ def build_overall_model(price_data, covid_data, batch_size,):
     return model
 
 
-def fit_overall_model(model, price_data, covid_data, epochs):
+def fit_overall_model(model, price_data, covid_data):
     covid_input = covid_data['x_train_overall']
     price_input = price_data['x_train_overall']
     covid_label = covid_data['y_train_overall']
     price_label = price_data['y_train_overall']
-    # ipdb.set_trace()
+
 	# fit model
     model.fit([covid_input, price_input], covid_label, epochs=OVERALL_EPOCH, shuffle=TRAIN_SHUFFLE)
 
@@ -236,9 +266,6 @@ def predict_overall_model(model, price_data, covid_data,):
 
 def model_prediction(symbol):
     prediction = []
-    #for i in range(0, 10):
-    # shuffle = True if i % 2 == 0 else False
-    
     scaler = None
     #keys for: "x_train", "x_test", "y_train", "y_test", "scaler"
     for i in range (0, NUM_TRAIN):
@@ -247,7 +274,7 @@ def model_prediction(symbol):
         scaler = covid_data['scaler']
         print("Executing for the " + str(i) + "th time")
         model = build_overall_model(price_data, covid_data, batch_size=30,)
-        fit_overall_model(model, price_data, covid_data, epochs=200)
+        fit_overall_model(model, price_data, covid_data)
         
         price_data, covid_data = prepare_data(
             f"{symbol}_daily.csv", shuffle=False)
@@ -258,13 +285,13 @@ def model_prediction(symbol):
             prediction = predict_overall_model(model, price_data, covid_data)
         else:
             prediction += predict_overall_model(model, price_data, covid_data)
-        # _, x_test_no_shuffle, _, y_test_no_shuffle, y_scaler = prepare_data(
-        #     f"{symbol}_daily.csv", shuffle=False)
 
-    
-    # prediction = model.predict(x_test_no_shuffle, batch_size=10)
-    
+    # price_data, covid_data = prepare_prediction_data(
+    #     f"{symbol}_daily.csv")
+    # prediction = scaler.inverse_transform(predict_overall_model(model, price_data, covid_data))
+    # print(prediction)
     prediction = np.array(prediction/NUM_TRAIN)
+    # prediction = np.mean(prediction, axis=1)
     label = np.array(covid_data['y_test'][:, 2])
     pyplot.plot(prediction, label='prediction')
     pyplot.plot(label, label='actual')
