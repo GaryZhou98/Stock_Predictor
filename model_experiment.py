@@ -25,16 +25,16 @@ DENSE2_OUTPUT_SIZE = 32
 DENSE3_OUTPUT_SIZE = PREDICTION_STEP
 
 PRICE_EPOCH = 150
-COVID_EPOCH = 50
+COVID_EPOCH = 1000
 OVERALL_EPOCH = 50
 
-TEST_PORTION = 0.1
+TEST_PORTION = 30
 OVERALL_TRAIN_PORTION = 0.4
 
 TRAIN_SHUFFLE = True
 SAMPLE_SHUFFLE = False
 
-NUM_TRAIN = 1
+NUM_TRAIN = 10
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -84,53 +84,54 @@ def prepare_data(filepath, shuffle=True):
 
     price_df = pd.read_csv(filepath, header=0)
     covid_df = pd.read_csv('covid.csv', header=0)
-    covid_df = price_df.merge(covid_df, how='left', on='date')
-    covid_df.fillna(value=0, inplace=True)
-    covid_df = covid_df[['close']+COVID_COLUMNS]
+    covid_df = price_df.merge(covid_df, how='outer', on='date')
+    covid_df.dropna(inplace=True)
+    # covid_df.fillna(value=0, inplace=True)
+    # covid_df = covid_df[['close']+COVID_COLUMNS]
     covid_df.drop(['date'], axis=1, inplace=True)
     price_df.drop(['date'], axis=1, inplace=True)
     price_values = price_df.to_numpy().astype("float32")
     covid_values = covid_df.to_numpy().astype("float32")
     
     covid_input, covid_label, scaler = series_to_sl(covid_values, is_covid=True)
-    test_portion = int(covid_label.shape[0]*TEST_PORTION)
-    overall_portion = int(covid_label.shape[0]*OVERALL_TRAIN_PORTION)
+    # test_portion = int(covid_label.shape[0]*TEST_PORTION)
+    # overall_portion = int(covid_label.shape[0]*OVERALL_TRAIN_PORTION)
     x_train, x_test, y_train, y_test = train_test_split(
-        covid_input, covid_label, test_size=test_portion, shuffle=shuffle)
+        covid_input, covid_label, test_size=TEST_PORTION, shuffle=shuffle)
 
-    # Further split training data to train for individual model vs. train for overall model
+    # # Further split training data to train for individual model vs. train for overall model
 
-    x_train_overall = x_train[len(x_train)-overall_portion:, :, :]
-    y_train_overall = y_train[len(y_train)-overall_portion:, :]
-    x_train_individual = x_train[:len(x_train)-overall_portion, :, :]
-    y_train_individual = y_train[:len(y_train)-overall_portion, :]
+    # x_train_overall = x_train[len(x_train)-overall_portion:, :, :]
+    # y_train_overall = y_train[len(y_train)-overall_portion:, :]
+    # x_train_individual = x_train[:len(x_train)-overall_portion, :, :]
+    # y_train_individual = y_train[:len(y_train)-overall_portion, :]
 
-    covid_data = {"x_train_individual": x_train_individual,
-                  "x_test": x_test,
-                  "y_train_individual": y_train_individual,
-                  "y_test": y_test,
-                  "x_train_overall": x_train_overall,
-                  "y_train_overall": y_train_overall,
-                  "scaler": scaler}
+    # covid_data = {"x_train_individual": x_train_individual,
+    #               "x_test": x_test,
+    #               "y_train_individual": y_train_individual,
+    #               "y_test": y_test,
+    #               "x_train_overall": x_train_overall,
+    #               "y_train_overall": y_train_overall,
+    #               "scaler": scaler}
 
-    input_data, label, scaler = series_to_sl(price_values, is_covid=False)
-    x_train, x_test, y_train, y_test = train_test_split(
-        input_data, label, test_size=test_portion, shuffle=shuffle)
+    # input_data, label, scaler = series_to_sl(price_values, is_covid=False)
+    # x_train, x_test, y_train, y_test = train_test_split(
+    #     input_data, label, test_size=test_portion, shuffle=shuffle)
 
-    x_train_overall = x_train[len(x_train)-overall_portion:, :, :]
-    y_train_overall = y_train[len(y_train)-overall_portion:, :]
-    x_train_individual = x_train[:len(x_train)-overall_portion, :, :]
-    y_train_individual = y_train[:len(y_train)-overall_portion, :]
+    # x_train_overall = x_train[len(x_train)-overall_portion:, :, :]
+    # y_train_overall = y_train[len(y_train)-overall_portion:, :]
+    # x_train_individual = x_train[:len(x_train)-overall_portion, :, :]
+    # y_train_individual = y_train[:len(y_train)-overall_portion, :]
 
-    price_data = {"x_train_individual": x_train_individual,
-                  "x_test": x_test,
-                  "y_train_individual": y_train_individual,
-                  "y_test": y_test,
-                  "x_train_overall": x_train_overall,
-                  "y_train_overall": y_train_overall,
-                  "scaler": scaler}
+    # price_data = {"x_train_individual": x_train_individual,
+    #               "x_test": x_test,
+    #               "y_train_individual": y_train_individual,
+    #               "y_test": y_test,
+    #               "x_train_overall": x_train_overall,
+    #               "y_train_overall": y_train_overall,
+    #               "scaler": scaler}
 
-    return price_data, covid_data
+    return x_train, x_test, y_train, y_test, scaler
 
 def prepare_prediction_data(filepath):
     price_df = pd.read_csv(filepath, header=0)
@@ -262,24 +263,24 @@ def predict_overall_model(model, price_data, covid_data,):
 def model_prediction(symbol):
     prediction = []
     scaler = None
+    x_train, x_test, y_train, y_test, scaler = prepare_data(
+        f"{symbol}_daily.csv", shuffle=SAMPLE_SHUFFLE)
     #keys for: "x_train", "x_test", "y_train", "y_test", "scaler"
     for i in range (0, NUM_TRAIN):
-        price_data, covid_data = prepare_data(
-        f"{symbol}_daily.csv", shuffle=SAMPLE_SHUFFLE)
-        scaler = covid_data['scaler']
+        # scaler = covid_data['scaler']
         print("Executing for the " + str(i) + "th time")
-        model = build_overall_model(price_data, covid_data, batch_size=30,)
-        fit_overall_model(model, price_data, covid_data)
+        model = build_covid_model(x_train, y_train, batch_size=30,)
+        # fit_overall_model(model, price_data, covid_data)
         
-        price_data, covid_data = prepare_data(
+        x_train, x_test, y_train, y_test, scaler = prepare_data(
             f"{symbol}_daily.csv", shuffle=False)
         
         print("Making " + str(i) + "th Prediction")
 
         if i == 0 :
-            prediction = predict_overall_model(model, price_data, covid_data)
+            prediction = model.predict(x_test)
         else:
-            prediction += predict_overall_model(model, price_data, covid_data)
+            prediction += model.predict(x_test)
 
     # price_data, covid_data = prepare_prediction_data(
     #     f"{symbol}_daily.csv")
@@ -287,7 +288,7 @@ def model_prediction(symbol):
     # print(prediction)
     prediction = np.array(prediction/NUM_TRAIN)
     # prediction = np.mean(prediction, axis=1)
-    label = np.array(covid_data['y_test'][:, 2]).reshape(-1,1)
+    label = np.array(y_test[:, 2]).reshape(-1,1)
     pyplot.plot(scaler.inverse_transform(prediction[:, 0].reshape(-1,1)), label='prediction_first')
     pyplot.plot(scaler.inverse_transform(prediction[:, PREDICTION_STEP-1].reshape(-1,1)), label='prediction_last')
     pyplot.plot(scaler.inverse_transform(label), label='actual')

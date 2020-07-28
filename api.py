@@ -268,4 +268,5 @@ if __name__ == "__main__":
         symbols = iter(get_row_from_csv(args.file))
         for row in symbols:
             for symbol in row:
-                get_data(symbol)
+                if symbol != '': 
+                    get_data(symbol)
