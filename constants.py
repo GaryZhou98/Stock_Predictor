@@ -17,7 +17,7 @@ OVERALL_TRAIN_PORTION = 0.4
 TRAIN_SHUFFLE = True
 SAMPLE_SHUFFLE = False
 
-NUM_TRAIN = 3
+NUM_TRAIN = 1
 
 
 # api constants

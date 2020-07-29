@@ -19,8 +19,10 @@ end = datetime.now()
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-s", "--symbol", help="symbol to pull data on", default=False)
-    parser.add_argument("-f", "--file", help="pull symbols from file", default=False)
+    parser.add_argument(
+        "-s", "--symbol", help="symbol to pull data on", default=False)
+    parser.add_argument(
+        "-f", "--file", help="pull symbols from file", default=False)
     parser.add_argument(
         "-c", "--covid_only", help="only pull covid data", action="store_true"
     )
@@ -65,17 +67,14 @@ def get_covid_data():
 
 def get_daily_prices(symbol):
     daily_prices = make_av_request(
-        c.DAILY_PRICES_PATH.format(symbol, credentials["av_api_key"])
-    )
-    import ipdb
-
-    ipdb.set_trace()
+        c.DAILY_PRICES_PATH.format(symbol, credentials["av_api_key"]))
     daily_prices = pd.DataFrame.from_dict(
         daily_prices["Time Series (Daily)"], orient="index"
     )
     daily_prices.drop(columns=["5. volume"], inplace=True)
     daily_prices.reset_index(inplace=True)
-    daily_prices["index"] = pd.to_datetime(daily_prices["index"], format=c.TIME_FORMAT)
+    daily_prices["index"] = pd.to_datetime(
+        daily_prices["index"], format=c.TIME_FORMAT)
     daily_prices.rename(
         columns={
             "index": "date",
@@ -107,7 +106,8 @@ def get_price_indicator(symbol, indicator, path):
     )
     p_i.reset_index(inplace=True)
     p_i["index"] = pd.to_datetime(p_i["index"], format=c.TIME_FORMAT)
-    p_i.rename(columns={"index": "date", indicator: indicator.lower()}, inplace=True)
+    p_i.rename(columns={"index": "date",
+                        indicator: indicator.lower()}, inplace=True)
     return p_i
 
 
@@ -120,10 +120,12 @@ def get_unemployment(start_date):
             "endyear": datetime.date.today().year,
         }
     )
-    res = json.loads(requests.post(c.BLS_API_URL, data=data, headers=headers).text)
+    res = json.loads(requests.post(
+        c.BLS_API_URL, data=data, headers=headers).text)
     df = pd.DataFrame.from_dict(res["Results"]["series"][0]["data"])
     df["period"] = pd.to_datetime(df["periodName"] + " " + df["year"])
-    df.drop(columns=["year", "periodName", "latest", "footnotes"], inplace=True)
+    df.drop(columns=["year", "periodName",
+                     "latest", "footnotes"], inplace=True)
     index = pd.date_range(df["period"].min(), datetime.date.today())
     df = df.set_index("period").reindex(index, method="backfill")
     df = df.reset_index()
@@ -134,7 +136,8 @@ def get_unemployment(start_date):
 
 def get_recommendation_trends(symbol, start_date):
     all_recs = requests.get(
-        c.RECOMMENDATION_TRENDS_PATH.format(symbol, credentials["finnhub_api_key"])
+        c.RECOMMENDATION_TRENDS_PATH.format(
+            symbol, credentials["finnhub_api_key"])
     ).json()
     all_recs = pd.DataFrame.from_records(all_recs)
     first_day_of_month = start_date.replace(day=1)
