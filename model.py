@@ -28,13 +28,13 @@ PRICE_EPOCH = 100
 COVID_EPOCH = 50
 OVERALL_EPOCH = 50
 
-TEST_PORTION = 0.1
+TEST_PORTION = 0.05
 OVERALL_TRAIN_PORTION = 0.4
 
 TRAIN_SHUFFLE = True
 SAMPLE_SHUFFLE = False
 
-NUM_TRAIN = 3
+NUM_TRAIN = 5
 
 def get_args():
     parser = argparse.ArgumentParser()
