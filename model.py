@@ -23,8 +23,7 @@ from preprocessing import prepare_data, prepare_prediction_data
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-s", "--symbol", help="symbol to pull data on", default=False)
+    parser.add_argument("-s", "--symbol", help="symbol to pull data on", default=False)
     return parser.parse_args()
 
 
@@ -185,8 +184,7 @@ def model_prediction(symbol):
         label="prediction_first",
     )
     pyplot.plot(
-        scaler.inverse_transform(
-            prediction[:, c.PREDICTION_STEP - 1].reshape(-1, 1)),
+        scaler.inverse_transform(prediction[:, c.PREDICTION_STEP - 1].reshape(-1, 1)),
         label="prediction_last",
     )
     pyplot.plot(scaler.inverse_transform(label), label="actual")

@@ -8,8 +8,8 @@ import constants
 
 def series_to_sl(values, is_covid=False):
     # Split data into input and labels
-    input_data = np.array(values[0: len(values) - constants.PREDICTION_STEP])
-    label = np.array(values[constants.TIME_STEP:, 0]).reshape(-1, 1)
+    input_data = np.array(values[0 : len(values) - constants.PREDICTION_STEP])
+    label = np.array(values[constants.TIME_STEP :, 0]).reshape(-1, 1)
 
     # Normalization of data
     for i in range(0, input_data.shape[1]):
@@ -18,14 +18,11 @@ def series_to_sl(values, is_covid=False):
             MinMaxScaler(feature_range=(0, 1)).fit(temp).transform(temp)[:, 0]
         )
 
-    # x_scaler = MinMaxScaler(feature_range=(0, 1)).fit(input_data)
-    # input_data = x_scaler.transform(input_data)
     y_scaler = MinMaxScaler(feature_range=(0, 1)).fit(label)
     label = y_scaler.transform(label)
 
     x = []
     y = []
-
     # reshape input and label
     for start, end in zip(
         range(0, len(input_data) - constants.TIME_STEP),
@@ -47,7 +44,6 @@ def series_to_sl(values, is_covid=False):
 
 
 def prepare_data(filepath, shuffle=True):
-
     price_df = pd.read_csv(filepath, header=0)
     covid_df = pd.read_csv("covid.csv", header=0)
     covid_df = price_df.merge(covid_df, how="left", on="date")
@@ -58,8 +54,7 @@ def prepare_data(filepath, shuffle=True):
     price_values = price_df.to_numpy().astype("float32")
     covid_values = covid_df.to_numpy().astype("float32")
 
-    covid_input, covid_label, scaler = series_to_sl(
-        covid_values, is_covid=True)
+    covid_input, covid_label, scaler = series_to_sl(covid_values, is_covid=True)
 
     test_portion = int(covid_label.shape[0] * 0.15)
     overall_portion = int(covid_label.shape[0] * 0.25)
@@ -68,9 +63,8 @@ def prepare_data(filepath, shuffle=True):
     )
 
     # Further split training data to train for individual model vs. train for overall model
-
-    x_train_overall = x_train[len(x_train) - overall_portion:, :, :]
-    y_train_overall = y_train[len(y_train) - overall_portion:, :]
+    x_train_overall = x_train[len(x_train) - overall_portion :, :, :]
+    y_train_overall = y_train[len(y_train) - overall_portion :, :]
     x_train_individual = x_train[: len(x_train) - overall_portion, :, :]
     y_train_individual = y_train[: len(y_train) - overall_portion, :]
 
@@ -89,8 +83,8 @@ def prepare_data(filepath, shuffle=True):
         input_data, label, test_size=test_portion, shuffle=shuffle
     )
 
-    x_train_overall = x_train[len(x_train) - overall_portion:, :, :]
-    y_train_overall = y_train[len(y_train) - overall_portion:, :]
+    x_train_overall = x_train[len(x_train) - overall_portion :, :, :]
+    y_train_overall = y_train[len(y_train) - overall_portion :, :]
     x_train_individual = x_train[: len(x_train) - overall_portion, :, :]
     y_train_individual = y_train[: len(y_train) - overall_portion, :]
 
@@ -118,7 +112,7 @@ def prepare_prediction_data(filepath):
     price_values = price_df.to_numpy().astype("float32")
     covid_values = covid_df.to_numpy().astype("float32")
 
-    covid_data = np.array(covid_values[len(covid_values) - c.PREDICTION_STEP:])
+    covid_data = np.array(covid_values[len(covid_values) - c.PREDICTION_STEP :])
     for i in range(0, covid_data.shape[1]):
         temp = covid_data[:, i].reshape(-1, 1)
         covid_data[:, i] = (
@@ -126,7 +120,7 @@ def prepare_prediction_data(filepath):
         )
     covid_data = covid_data[:, 1:]
 
-    price_data = np.array(price_values[len(price_values) - c.PREDICTION_STEP:])
+    price_data = np.array(price_values[len(price_values) - c.PREDICTION_STEP :])
     for i in range(0, price_data.shape[1]):
         temp = price_data[:, i].reshape(-1, 1)
         price_data[:, i] = (
