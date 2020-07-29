@@ -15,7 +15,7 @@ import ipdb
 import datetime
 
 # preprocessing constants
-TIME_STEP = 10
+TIME_STEP = 20
 PREDICTION_STEP = 10
 
 # model constants
@@ -24,7 +24,7 @@ DENSE1_OUTPUT_SIZE = 64
 DENSE2_OUTPUT_SIZE = 32
 DENSE3_OUTPUT_SIZE = PREDICTION_STEP
 
-PRICE_EPOCH = 150
+PRICE_EPOCH = 100
 COVID_EPOCH = 50
 OVERALL_EPOCH = 50
 
@@ -34,7 +34,7 @@ OVERALL_TRAIN_PORTION = 0.4
 TRAIN_SHUFFLE = True
 SAMPLE_SHUFFLE = False
 
-NUM_TRAIN = 1
+NUM_TRAIN = 3
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -268,7 +268,7 @@ def model_prediction(symbol):
         f"{symbol}_daily.csv", shuffle=SAMPLE_SHUFFLE)
         scaler = covid_data['scaler']
         print("Executing for the " + str(i) + "th time")
-        model = build_overall_model(price_data, covid_data, batch_size=30,)
+        model = build_overall_model(price_data, covid_data, batch_size=10,)
         fit_overall_model(model, price_data, covid_data)
         
         price_data, covid_data = prepare_data(
@@ -286,7 +286,6 @@ def model_prediction(symbol):
     # prediction = scaler.inverse_transform(predict_overall_model(model, price_data, covid_data))
     # print(prediction)
     prediction = np.array(prediction/NUM_TRAIN)
-    # prediction = np.mean(prediction, axis=1)
     label = np.array(covid_data['y_test'][:, 2]).reshape(-1,1)
     pyplot.plot(scaler.inverse_transform(prediction[:, 0].reshape(-1,1)), label='prediction_first')
     pyplot.plot(scaler.inverse_transform(prediction[:, PREDICTION_STEP-1].reshape(-1,1)), label='prediction_last')
