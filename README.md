@@ -37,5 +37,8 @@ By plotting out the prediciton of our model and the actual labels using the data
 
 2. On the other hand, the amount of historical financial data is quite large and thus the training time for our model has increased substantially when using our own local machine. Therefore, a migration to online cloud platforms such as GCP might be needed in the near future.
 
+**- Running the Scripts**:
+- To pull the financial and Covid data, run `python api.py -n -s [symbol]` which would save the data for the given symbol in a csv file. Alternatively, you could write a csv file with one symbol per line followed by a comma and run `python api.py -n -f [filepath]` and the script would pull the data for each symbol included in the file
+- To run the model, use `python model.py -s [symbol]`.
 
 
